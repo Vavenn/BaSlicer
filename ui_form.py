@@ -1,8 +1,10 @@
 import json
 import os
 import struct
+from tabnanny import check
 from tracemalloc import start
-import wave
+# import wave
+import PyWave
 from pathlib import Path
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, QTableWidget, QTableWidgetItem, 
@@ -13,7 +15,7 @@ from PySide6.QtWidgets import (
 from PySide6 import QtCore
 from PySide6.QtMultimedia import QAudioOutput, QAudioFormat
 from PySide6.QtCore import QRect, QSettings, QMetaObject, QCoreApplication, Qt
-from PySide6.QtGui import QCloseEvent, QAction
+from PySide6.QtGui import QCloseEvent, QAction, QFont
 import numpy as np
 from scipy.signal import correlate
 import pyqtgraph as pg
@@ -62,7 +64,7 @@ class AudioSample:
         self.samples = samples if samples is not None else []
 
 class Slice:
-    def __init__(self, start, end, sample_groups):
+    def __init__(self, start, end, sample_groups, ):
         self.start = start
         self.end = end
         self.sample_groups = sample_groups 
@@ -94,6 +96,10 @@ class Ui_MainWindow(object):
             MainWindow.setObjectName(u"MainWindow")
         MainWindow.resize(1227, 604)
         self.project_file_path = ""
+
+        self.SGROUPS = []
+        self.SLICES = []
+        self.SliceTabSelectedSGroups = []
 
             #       TOP BAR ACTIONS
 
@@ -152,6 +158,10 @@ class Ui_MainWindow(object):
         self.ImporttabSampleGroupList.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.ImporttabSampleGroupList.setObjectName(u"ImporttabSampleGroupList")
         self.ImporttabSampleGroupList.setGeometry(QRect(10, 20, 191, 481))
+        font = self.ImporttabSampleGroupList.font()
+        font.setPointSize(17)
+        font.setBold(False)
+        self.ImporttabSampleGroupList.setFont(font)
         self.ImporttabSampleGroupList.setColumnCount(3)
         self.ImporttabSampleGroupList.setColumnWidth(0, 190)
         if not DEV:
@@ -174,7 +184,7 @@ class Ui_MainWindow(object):
         self.AddSampleGroupconfirm = QPushButton(self.AddSampleGroupBox)
         self.AddSampleGroupconfirm.setObjectName(u"AddSampleGroupconfirm")
         self.AddSampleGroupconfirm.setGeometry(QRect(190, 20, 21, 24))
-        #self.AddSampleGroupconfirm.clicked.connect(self.add_sample_group)
+        self.AddSampleGroupconfirm.clicked.connect(self.AddNewSGroup)
 
         self.RenameSampleGroupBox = QGroupBox(self.SampleGroupConfig)
         self.RenameSampleGroupBox.setObjectName(u"RenameSampleGroupBox")
@@ -210,12 +220,12 @@ class Ui_MainWindow(object):
         self.SampleGroupRemove = QPushButton(self.SampleGroupEdit)
         self.SampleGroupRemove.setObjectName(u"SampleGroupRemove")
         self.SampleGroupRemove.setGeometry(QRect(10, 20, 51, 24))
-        #self.SampleGroupRemove.clicked.connect(self.delete_selected_sample_groups)
+        self.SampleGroupRemove.clicked.connect(self.RemoveSampleGroup)
 
         self.SampleGroupClone = QPushButton(self.SampleGroupEdit)
         self.SampleGroupClone.setObjectName(u"SampleGroupClone")
         self.SampleGroupClone.setGeometry(QRect(10, 50, 51, 24))
-        #self.SampleGroupClone.clicked.connect(self.clonesamplegroup)
+        self.SampleGroupClone.clicked.connect(self.CloneSampleGroup)
 
         self.SampleGroupContentsPreview = QTableWidget(self.SampleGroupConfig)
         self.SampleGroupContentsPreview.setObjectName(u"SampleGroupContentsPreview")
@@ -259,17 +269,17 @@ class Ui_MainWindow(object):
         
         self.RemoveSelecteAudioButton = QPushButton(self.Import)
         self.RemoveSelecteAudioButton.setObjectName(u"RemoveSelecteAudioButton")
-        self.RemoveSelecteAudioButton.setGeometry(QRect(320, 134, 180, 24))
-        #self.RemoveSelecteAudioButton.clicked.connect(self.remove_selected_audio_file)
+        self.RemoveSelecteAudioButton.setGeometry(QRect(510, 137, 130, 24))
+        self.RemoveSelecteAudioButton.clicked.connect(self.RemoveAudiofile)
 
         self.ImportRecordingGroupBox = QGroupBox(self.Import)
         self.ImportRecordingGroupBox.setObjectName(u"ImportRecordingGroupBox")
-        self.ImportRecordingGroupBox.setGeometry(QRect(10, 20, 291, 141))
+        self.ImportRecordingGroupBox.setGeometry(QRect(10, 20, 491, 141))
 
         self.ImportRecordingButton = QPushButton(self.ImportRecordingGroupBox)
         self.ImportRecordingButton.setObjectName(u"ImportRecordingButton")
-        self.ImportRecordingButton.setGeometry(QRect(10, 110, 101, 21))
-        #self.ImportRecordingButton.clicked.connect(self.add_audio_file_to_project)
+        self.ImportRecordingButton.setGeometry(QRect(10, 110, 101, 24))
+        self.ImportRecordingButton.clicked.connect(self.ValidateAudioImport)
 
         self.ImportRecordingName = QLineEdit(self.ImportRecordingGroupBox)
         self.ImportRecordingName.setObjectName(u"ImportRecordingName")
@@ -281,12 +291,12 @@ class Ui_MainWindow(object):
 
         self.ImportRecordingDataPath = QLineEdit(self.ImportRecordingGroupBox)
         self.ImportRecordingDataPath.setObjectName(u"ImportRecordingDataPath")
-        self.ImportRecordingDataPath.setGeometry(QRect(80, 30, 201, 22))
+        self.ImportRecordingDataPath.setGeometry(QRect(80, 30, 401, 22))
 
         self.ImportRecordingSelectFileButton = QPushButton(self.ImportRecordingGroupBox)
         self.ImportRecordingSelectFileButton.setObjectName(u"ImportRecordingSelectFileButton")
         self.ImportRecordingSelectFileButton.setGeometry(QRect(10, 30, 61, 24))
-        #self.ImportRecordingSelectFileButton.clicked.connect(self.import_audio_file)
+        self.ImportRecordingSelectFileButton.clicked.connect(self.ImportAudioFile)
 
         self.MainTabs.addTab(self.Import, "")
 
@@ -311,7 +321,7 @@ class Ui_MainWindow(object):
         self.Add_Sample_Cut_Data = QPushButton(self.Slice)
         self.Add_Sample_Cut_Data.setObjectName(u"Add_Sample_Cut_Data")
         self.Add_Sample_Cut_Data.setGeometry(QRect(530, 60, 61, 25))  # Adjusted y-coordinate to align with other widgets
-        #self.Add_Sample_Cut_Data.clicked.connect(self.add_sample_cut_point)
+        self.Add_Sample_Cut_Data.clicked.connect(self.AddNewSlice)
 
         self.SampleCutpointInput = ClipboardSpinBox(self.Slice, None) #paste_callback=self.paste_clipboard_to_cutpoint)
         self.SampleCutpointInput.setObjectName(u"SampleCutpointInput")
@@ -342,21 +352,24 @@ class Ui_MainWindow(object):
         if not DEV:
             self.SampleGroupSelection.hideColumn(1)
             self.SampleGroupSelection.hideColumn(2)
-        self.SampleGroupSelection.setColumnWidth(0, 158)
+        self.SampleGroupSelection.setColumnWidth(0, 138)
+        self.SampleGroupSelection.setColumnWidth(1, 10)
+        self.SampleGroupSelection.setColumnWidth(2, 10)
         self.SampleGroupSelection.setColumnWidth(3, 10)
         self.SampleGroupSelection.verticalHeader().setVisible(False)
         self.SampleGroupSelection.horizontalHeader().setVisible(False)
         self.SampleGroupSelection.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # Disable horizontal scrollbar
+        self.SampleGroupSelection.clicked.connect(self.UpdateSelectedSGroup)
 
         self.SliceGroupAllButton = QPushButton(self.Slice)
         self.SliceGroupAllButton.setObjectName(u"SliceGroupAllButton")
         self.SliceGroupAllButton.setGeometry(QRect(120, 60, 51, 24))
-        #self.SliceGroupAllButton.clicked.connect(self.select_all_sample_groups)
+        self.SliceGroupAllButton.clicked.connect(self.SelectAllSampleGroups)
        
         self.SliceGroupClearButton = QPushButton(self.Slice)
         self.SliceGroupClearButton.setObjectName(u"SliceGroupClearButton")
         self.SliceGroupClearButton.setGeometry(QRect(170, 60, 51, 24))
-        #self.SliceGroupClearButton.clicked.connect(self.clear_all_sample_groups)
+        self.SliceGroupClearButton.clicked.connect(self.ClearAllSampleGroups)
       
         self.labelsamplegroups = QLabel(self.Slice)
         self.labelsamplegroups.setObjectName(u"labelsamplegroups")
@@ -621,7 +634,7 @@ class Ui_MainWindow(object):
         self.NameInprojectLabel.setText(QCoreApplication.translate("MainWindow", u"Name in project", None))
         self.ImportRecordingDataPath.setText(QCoreApplication.translate("MainWindow", u"    . . .", None))
         self.ImportRecordingSelectFileButton.setText(QCoreApplication.translate("MainWindow", u"Select File", None))
-        self.RemoveSelecteAudioButton.setText(QCoreApplication.translate("MainWindow", u"Remove Selected Audio File", None))
+        self.RemoveSelecteAudioButton.setText(QCoreApplication.translate("MainWindow", u"Remove Audio", None))
         self.MainTabs.setTabText(self.MainTabs.indexOf(self.Import), QCoreApplication.translate("MainWindow", u"Import", None))
         self.AddSampleGroupBox.setTitle(QCoreApplication.translate("MainWindow", u"Add SGroup", None))
         self.AddSampleGroupNameEdit.setText("")
@@ -662,3 +675,345 @@ class Ui_MainWindow(object):
         self.SortSetup.setTitle(QCoreApplication.translate("MainWindow", u"Setup", None))
         self.LabelSortRRSelection.setText(QCoreApplication.translate("MainWindow", u"Round Robins", None))
     # retranslateUi
+
+    def ImportAudioFile(self):
+        """
+        File Opening Dialog, WAV only.
+        """
+        settings = QSettings("BaSlicer", "FileDialogs") 
+        last_dir = settings.value("lastWavImportDir", "")
+        
+        file_path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Select a WAV file",
+            last_dir,
+            "WAV files (*.wav);;All files (*)"
+        )
+        if file_path:
+            settings.setValue("lastWavImportDir", file_path)
+            self.ImportRecordingDataPath.setText(file_path)
+            return file_path
+
+        
+        return None
+
+    def ValidateAudioImport(self):
+        """
+        Adds audio to project as object.
+        """
+        rawpath = self.ImportRecordingDataPath.text()
+        path = Path(rawpath)
+        name = self.ImportRecordingName.text()
+
+        for audio_file in self.audio_files:
+            if audio_file.name == name:
+                print(f"Audio file '{name}' already exists in the project.")
+                return
+
+        if path.is_file() and path.suffix.lower() == ".wav" and name:
+
+            num_channels, sample_rate, bit_depth, num_frames = GetWavInfo(rawpath)
+
+            new_audio_file = AudioFile(
+                name=name,
+                file_path=str(path),
+                channels=num_channels,
+                sample_rate=sample_rate,
+                bit_depth=bit_depth,
+                length=num_frames
+            )
+
+            self.audio_files.append(new_audio_file)
+
+            # Update stuff
+            self.UpdateImportTab()
+            print(f"Audio file '{name}' added to the project.")
+        else:
+            print("Invalid file or missing name.")
+
+    def AddNewSGroup(self):
+        """
+        Add a new empty sample group with the given name.
+        """
+
+        name = self.AddSampleGroupNameEdit.text()
+
+        if not name:
+            print("Sample group name cannot be empty.")
+            return
+
+        # Check if the group already exists
+        for group in self.SGROUPS:
+            if group.name == name:
+                print(f"Sample group '{name}' already exists.")
+                return
+
+        # Create a new sample group
+        new_group = SampleGroup(name)
+        self.SGROUPS.append(new_group)
+        print(f"Sample group '{name}' added.")
+        self.AddSampleGroupNameEdit.clear()
+        #Update UI stuff
+        self.UpdateSliceTab()
+        self.UpdateImportTab()
+
+    def CloneSampleGroup(self):
+        """
+        Clone the selected sgrouop.
+        """
+        selected = self.ImporttabSampleGroupList.selectedIndexes()
+        if selected:
+            selected_row = selected[0].row()
+            original_group_name_item = self.ImporttabSampleGroupList.item(selected_row, 0)  # Column 0: Group Name
+
+            if not original_group_name_item:
+                print("No sample group selected.")
+                return
+
+            original_group_name = original_group_name_item.text()
+
+            base_name = original_group_name.split('.')[0]
+            suffix = 1
+            new_group_name = f"{base_name}.{suffix}"
+
+            # Ensure the new name is unique
+            existing_names = [group.name for group in self.SGROUPS]
+            while new_group_name in existing_names:
+                suffix += 1
+                new_group_name = f"{base_name}.{suffix}"
+
+            # Clone the group
+            for group in self.SGROUPS:
+                if group.name == original_group_name:
+                    cloned_group = SampleGroup(new_group_name, audio_files=group.audio_files)
+                    self.SGROUPS.append(cloned_group)
+                    print(f"Sample group '{original_group_name}' cloned as '{new_group_name}'.")
+                    self.UpdateImportTab()
+                    return
+
+            print(f"Sample group '{original_group_name}' not found.")
+
+    def AddNewSlice(self):
+        # After method, update table according to new stuff
+
+        # Start Point
+        if self.SampleCutpointInput.text() == '':
+            return
+        else:
+            startpoint = int(self.SampleCutpointInput.text())
+
+        # End Point
+        if self.IsLengthCheckbox.isChecked():
+            endpoint = int(self.SampleEndInput.value()) + startpoint
+        else:
+            endpoint = int(self.SampleEndInput.value())
+
+        length = endpoint - startpoint
+
+        if length <= 0:
+            print("Invalid length.")
+            return
+
+        for slice in self.SLICES:
+            if slice.start == startpoint and slice.end == endpoint:
+                print("Slice already exists.")
+                return
+
+        selected_groups = self.SGroupNamesToObjects(self.SliceTabSelectedSGroups)
+        if selected_groups is None:
+            selected_groups = []
+
+        # Create a new slice
+        new_slice = Slice(startpoint, endpoint, selected_groups)
+
+        self.SLICES.append(new_slice)
+        print("SLICES: ", self.SLICES)
+        self.ResetSliceInputs()
+        self.UpdateSliceTab()
+
+    def ResetSliceInputs(self):
+        self.SampleCutpointInput.setValue(0)
+        self.SampleEndInput.setValue(0)
+
+    def RemoveAudiofile(self):
+        """
+        Remove selected audio file from project.
+        """
+        selected = self.AudioFilesList.selectedIndexes()
+        if selected:
+            row = selected[0].row()
+            if 0 <= row < len(self.audio_files):
+                removed_file = self.audio_files.pop(row)
+                print(f"Audio file '{removed_file.name}' removed from the project.")
+
+        self.UpdateImportTab()
+
+    def RemoveSampleGroup(self):
+        """
+        Delete the selected sample groups from the project.
+        """
+        selected = self.ImporttabSampleGroupList.selectedIndexes()
+        if not selected:
+            print("No sample group selected.")
+            return
+
+        rows_to_delete = sorted(set(index.row() for index in selected), reverse=True)
+
+        for row in rows_to_delete:
+            group_name_item = self.ImporttabSampleGroupList.item(row, 0)  # 0 = Group Name
+            if group_name_item:
+                group_name = group_name_item.text()
+                for sgroup in self.SGROUPS:
+                    if sgroup.name == group_name:
+                        self.SGROUPS.remove(sgroup)
+                        print(f"Sample group '{group_name}' deleted.")
+                        break
+                
+
+        self.UpdateImportTab()
+
+    def SelectAllSampleGroups(self):
+        """
+        Select all sample groups in the SampleGroupSelection table.
+        """
+        for i in range(self.SampleGroupSelection.rowCount()):
+            checkbox_item = self.SampleGroupSelection.item(i, 2)    # 2 = Checkbox
+            if checkbox_item:
+                checkbox_item.setCheckState(Qt.CheckState.Checked)
+        self.UpdateSelectedSGroup()
+
+    def ClearAllSampleGroups(self):
+        """
+        Clear all sample groups in the SampleGroupSelection table.
+        """
+        for i in range(self.SampleGroupSelection.rowCount()):
+            checkbox_item = self.SampleGroupSelection.item(i, 2)    # 2 = Checkbox
+            if checkbox_item:
+                checkbox_item.setCheckState(Qt.CheckState.Unchecked)
+        self.UpdateSelectedSGroup()
+
+    def SGroupNamesToObjects(self, sgrouplist):
+            """
+            Return list of Sgroup objects from a list of names.
+
+            :param sgrouplist: List of sgroup names.
+            """
+
+            if not sgrouplist:
+                return None
+            if sgrouplist == []:
+                return None
+            if not type(sgrouplist) == list:
+                return
+            if len(self.SGROUPS) == 0:
+                return None
+            
+            out = []
+
+            for name in sgrouplist:
+                for sgroup in self.SGROUPS:
+                    if sgroup.name == name:
+                        out.append(sgroup)
+
+            return out
+            
+    def UpdateSliceTab(self):
+        """
+        Update all UI elements in slice tab.
+        """
+        # SGroup selection table
+        self.SampleGroupSelection.setRowCount(len(self.SGROUPS))
+        for i, sgroup in enumerate(self.SGROUPS):
+            self.SampleGroupSelection.setItem(i, 0, QTableWidgetItem(sgroup.name)) # 0 = Name
+            self.SampleGroupSelection.setItem(i, 1, QTableWidgetItem("")) # 1 = Unused
+            checkbox_item = QTableWidgetItem()
+            checkbox_item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+            checkbox_item.setCheckState(Qt.CheckState.Unchecked)
+            self.SampleGroupSelection.setItem(i, 2, checkbox_item) # 2 = Checkbox
+            self.SampleGroupSelection.setItem(i, 3, QTableWidgetItem("")) # 3 = Unused
+        
+        # Sample cut data table
+        self.Sample_Cut_Data_Table.setRowCount(len(self.SLICES))
+        for i, slice in enumerate(self.SLICES):
+            self.Sample_Cut_Data_Table.setItem(i, 0, QTableWidgetItem(str(i))) # 0 = Unused
+            self.Sample_Cut_Data_Table.setItem(i, 1, QTableWidgetItem(str(slice.start))) # 1 = Absolute Startpoint
+            self.Sample_Cut_Data_Table.setItem(i, 2, QTableWidgetItem(str(slice.end))) # 2 = Absolute Endpoint
+            self.Sample_Cut_Data_Table.setItem(i, 3, QTableWidgetItem(str(slice.end-slice.start))) # 3 = Length
+            sliceSGroups = slice.sample_groups
+            sliceSGroups = [sgroup.name for sgroup in sliceSGroups]
+            self.Sample_Cut_Data_Table.setItem(i, 4, QTableWidgetItem(", ".join(sliceSGroups))) # 4 = SGroups
+
+        # Keep selected SGroups
+        for selectedgroup in self.SliceTabSelectedSGroups:
+            for i in range(self.SampleGroupSelection.rowCount()):
+                checkbox_item = self.SampleGroupSelection.item(i, 2)
+                name = self.SampleGroupSelection.item(i, 0)  # 0 = Name
+                if checkbox_item and name and name.text() == selectedgroup:
+                    checkbox_item.setCheckState(Qt.CheckState.Checked)
+                    break
+
+    def UpdateSelectedSGroup(self):
+        '''
+        Get selected SGroups from Slice tab.
+        '''
+
+        if len(self.SGROUPS) == 0:
+            return
+
+        checked_groups = []
+        for i in range(self.SampleGroupSelection.rowCount()):
+            checkbox_item = self.SampleGroupSelection.item(i, 2)    # 2 = Checkbox
+            if checkbox_item and checkbox_item.checkState() == Qt.CheckState.Checked:
+                name = self.SampleGroupSelection.item(i, 0)  # 0 = Name
+                if name:
+                    checked_groups.append(name.text())
+
+        self.SliceTabSelectedSGroups = checked_groups
+
+        print("Selected SGroups: ", self.SliceTabSelectedSGroups)
+
+    def UpdateImportTab(self):
+        """
+        Update all UI elements in import tab.
+        """
+
+        # SGroups
+        self.ImporttabSampleGroupList.setRowCount(len(self.SGROUPS))
+        for i, sgroup in enumerate(self.SGROUPS):
+            self.ImporttabSampleGroupList.setItem(i, 0, QTableWidgetItem(sgroup.name)) # 0 = Name
+            self.ImporttabSampleGroupList.setItem(i, 1, QTableWidgetItem("")) # 1 = Unused
+            self.ImporttabSampleGroupList.setItem(i, 2, QTableWidgetItem("")) # 2 = Unused
+            SGroupAudioFiles = sgroup.audio_files
+            self.ImporttabSampleGroupList.setItem(i, 3, QTableWidgetItem(str(SGroupAudioFiles))) # 3 = audio Files Contained
+
+
+        # Audio Files
+        self.AudioFilesList.setRowCount(len(self.audio_files))
+        for i, audio_file in enumerate(self.audio_files):
+            self.AudioFilesList.setItem(i, 0, QTableWidgetItem(audio_file.name)) # 0 = Name
+            self.AudioFilesList.setItem(i, 1, QTableWidgetItem(audio_file.file_path)) # 1 = File Path
+            self.AudioFilesList.setItem(i, 2, QTableWidgetItem(str(audio_file.channels))) # 2 = Channels
+            self.AudioFilesList.setItem(i, 3, QTableWidgetItem(str(audio_file.sample_rate))) # 3 = Sample Rate
+            self.AudioFilesList.setItem(i, 4, QTableWidgetItem(str(audio_file.bit_depth))) # 4 = Bit Depth
+            self.AudioFilesList.setItem(i, 5, QTableWidgetItem(str(audio_file.length))) # 5 = Length - import script needs update
+            self.AudioFilesList.setItem(i, 6, QTableWidgetItem("")) # 6 = Unused
+
+def GetWavInfo(file_path: str) -> tuple[int, int, int, int]:
+    """
+    Extracts WAV file attributes using the PyWave module.
+
+    :param file_path: Path to the WAV file.
+    :return: A tuple containing (num_channels, sample_rate, bit_depth, num_frames).
+    """
+    try:
+        with PyWave.open(file_path, 'r') as wav_file:
+            num_channels = wav_file.channels
+            sample_rate = wav_file.frequency
+            bit_depth = wav_file.bits_per_sample
+            # num_frames = wav_file.num_frames
+            num_frames = 0
+            print(f"Channels: {num_channels}, Sample Rate: {sample_rate}, Bit Depth: {bit_depth}, Frames: {num_frames}")
+            return num_channels, sample_rate, bit_depth, num_frames
+    except Exception as e:
+        print(f"Error reading WAV file: {e}")
+        return -1, -1, -1, -1
