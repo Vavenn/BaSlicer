@@ -1,5 +1,7 @@
-import json
+from ast import Import
+import pickle
 import os
+import select
 import struct
 from tabnanny import check
 from tracemalloc import start
@@ -27,6 +29,8 @@ _current_stream = None
 NOTE_NAMES = [
     'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'
 ]
+
+
 
 class AudioFile:
     def __init__(self, name, file_path, channels, sample_rate, bit_depth, length):
@@ -84,10 +88,14 @@ class ClipboardSpinBox(QSpinBox):
             
 class Ui_MainWindow(object):
     def __init__(self):
-        self.audio_files = []
-        self.sample_groups = []
-        self.slices = []
-        self.audio_samples = []
+        self.Saved = False
+        
+        self.VERSION = "0.2.0"
+        self.AUDIOFILES = []
+        self.SGROUPS = []
+        self.SLICES = []
+
+        self.SliceTabSelectedSGroups = []
 
     def setupUi(self, MainWindow):
         DEV = True
@@ -97,20 +105,19 @@ class Ui_MainWindow(object):
         MainWindow.resize(1227, 604)
         self.project_file_path = ""
 
-        self.SGROUPS = []
-        self.SLICES = []
-        self.SliceTabSelectedSGroups = []
+
 
             #       TOP BAR ACTIONS
 
         self.actionNew = QAction(MainWindow)
         self.actionNew.setObjectName(u"actionNew")
+        self.actionNew.triggered.connect(self.NewProject)
         self.actionOpen = QAction(MainWindow)
         self.actionOpen.setObjectName(u"actionOpen")
-        #self.actionOpen.triggered.connect(self.load_project)
+        self.actionOpen.triggered.connect(self.LoadSaveFile)
         self.actionSave = QAction(MainWindow)
         self.actionSave.setObjectName(u"actionSave")
-        #self.actionSave.triggered.connect(self.save_project)
+        self.actionSave.triggered.connect(self.SaveProject)
         self.actionSave_As = QAction(MainWindow)
         self.actionSave_As.setObjectName(u"actionSave_As")
         self.actionExit = QAction(MainWindow)
@@ -171,7 +178,7 @@ class Ui_MainWindow(object):
         self.ImporttabSampleGroupList.horizontalHeader().setVisible(False)
         self.ImporttabSampleGroupList.setSelectionBehavior(QTableWidget.SelectRows)
         self.ImporttabSampleGroupList.setSelectionMode(QTableWidget.SingleSelection)
-        #self.ImporttabSampleGroupList.clicked.connect(self.updateSamplegrouplist)
+        self.ImporttabSampleGroupList.clicked.connect(self.UpdateImportTabSGroupContentPreview)
 
         self.AddSampleGroupBox = QGroupBox(self.SampleGroupConfig)
         self.AddSampleGroupBox.setObjectName(u"AddSampleGroupBox")
@@ -240,10 +247,10 @@ class Ui_MainWindow(object):
         self.SampleGroupContentsLabel.setObjectName(u"SampleGroupContentsLabel")
         self.SampleGroupContentsLabel.setGeometry(QRect(210, 270, 49, 16))
 
-        self.AddAudioToSGroup = QPushButton(self.SampleGroupConfig)
-        self.AddAudioToSGroup.setObjectName(u"AddAudioToSGroup")
-        self.AddAudioToSGroup.setGeometry(QRect(210, 210, 221, 24))
-        #self.AddAudioToSGroup.clicked.connect(self.add_selected_audio_to_sgroup)
+        self.AddAudioToSGroupButton = QPushButton(self.SampleGroupConfig)
+        self.AddAudioToSGroupButton.setObjectName(u"AddAudioToSGroup")
+        self.AddAudioToSGroupButton.setGeometry(QRect(210, 210, 221, 24))
+        self.AddAudioToSGroupButton.clicked.connect(self.AddAudioToSGroup)
 
         self.RemoveAudioGromSGroup = QPushButton(self.SampleGroupConfig)
         self.RemoveAudioGromSGroup.setObjectName(u"RemoveAudioGromSGroup")
@@ -625,7 +632,7 @@ class Ui_MainWindow(object):
         self.SampleGroupRemove.setText(QCoreApplication.translate("MainWindow", u"Remove", None))
         self.SampleGroupClone.setText(QCoreApplication.translate("MainWindow", u"Clone", None))
         self.SampleGroupContentsLabel.setText(QCoreApplication.translate("MainWindow", u"Contents", None))
-        self.AddAudioToSGroup.setText(QCoreApplication.translate("MainWindow", u"Add audio to current group", None))
+        self.AddAudioToSGroupButton.setText(QCoreApplication.translate("MainWindow", u"Add audio to current group", None))
         self.RemoveAudioGromSGroup.setText(QCoreApplication.translate("MainWindow", u"Remove from current group", None))
         self.AudioFilesListGroup.setTitle(QCoreApplication.translate("MainWindow", u"Audio Files", None))
         self.ImportRecordingGroupBox.setTitle(QCoreApplication.translate("MainWindow", u"Import Recording", None))
@@ -649,7 +656,7 @@ class Ui_MainWindow(object):
         self.SampleGroupRemove.setText(QCoreApplication.translate("MainWindow", u"Remove", None))
         self.SampleGroupClone.setText(QCoreApplication.translate("MainWindow", u"Clone", None))
         self.SampleGroupContentsLabel.setText(QCoreApplication.translate("MainWindow", u"Contents", None))
-        self.AddAudioToSGroup.setText(QCoreApplication.translate("MainWindow", u"Add audio to current group", None))
+        self.AddAudioToSGroupButton.setText(QCoreApplication.translate("MainWindow", u"Add audio to current group", None))
         self.RemoveAudioGromSGroup.setText(QCoreApplication.translate("MainWindow", u"Remove from current group", None))
         self.AudioFilesListGroup.setTitle(QCoreApplication.translate("MainWindow", u"Audio Files", None))
 
@@ -697,6 +704,104 @@ class Ui_MainWindow(object):
         
         return None
 
+    def NotSavedPrompt(self, msg=None):
+        if not self.Saved:
+            reply = QMessageBox.question(
+                None,
+                "Unsaved Changes",
+                msg,
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel
+            )
+
+            if reply == QMessageBox.Yes:
+                self.SaveProject()
+            elif reply == QMessageBox.Cancel:
+                return
+
+    def NewProject(self):
+        """
+        Create a new project
+        """
+
+        self.NotSavedPrompt("You have unsaved changes. Do you want to save before creating a new project?")
+
+        self.AUDIOFILES = []
+        self.SGROUPS = []
+        self.SLICES = []
+        print("New project created.")
+
+        # Update UI stuff
+        self.UpdateEverything()
+
+    def LoadSaveFile(self):
+        """
+        Load shtuff
+        """
+
+        self.NotSavedPrompt("You have unsaved changes. Do you want to save before loading a new project?")
+
+        settings = QSettings("BaSlicer", "FileDialogs")
+        last_dir = settings.value("lastProjectOpenDir", "")
+
+        open_file, _ = QFileDialog.getOpenFileName(
+            None,
+            "Select a BaSlicer Project file",
+            last_dir,
+            "BasProject File (*.basproj);;All files (*)"
+        )
+        if open_file:
+            settings.setValue("lastProjectOpenDir", open_file)
+            self.project_file_path = open_file
+
+            with open(open_file, "rb") as f:
+                data = f.read()
+                # Deserialize the data to get the project state
+                if len(pickle.loads(data)) < 4:
+                    print("Warning: Project file is corrupted or incompatible.")
+                    return
+                data_version = pickle.loads(data)[3]
+                if data_version != self.VERSION or not data_version:
+                    print(f"Warning: Project version {data_version} does not match current version {self.VERSION}, load aborted.")
+                    return
+                self.AUDIOFILES, self.SGROUPS, self.SLICES, _ = pickle.loads(data)
+
+
+        # Update the UI with loaded data
+        self.UpdateEverything()
+
+    def SaveProject(self):
+        """
+        Save shtuff
+        """
+        settings = QSettings("BaSlicer", "FileDialogs")
+        last_dir = settings.value("lastProjectSaveDir", "")
+
+        if not self.project_file_path:
+            save_file_path, _ = QFileDialog.getSaveFileName(
+                None,
+                "Select a BaSlicer Project file",
+                last_dir,
+                "BasProject File (*.basproj);;All files (*)"
+            )
+            if not save_file_path:
+                print("Save operation canceled.")
+                return
+
+            settings.setValue("lastProjectSaveDir", save_file_path)
+            self.project_file_path = save_file_path
+
+
+
+
+        with open(self.project_file_path, "wb") as f:
+            pickle.dump(
+                (self.AUDIOFILES, self.SGROUPS, self.SLICES, self.VERSION),
+                f, pickle.HIGHEST_PROTOCOL)
+
+        self.Saved = True
+
+        print(f"Project saved to {self.project_file_path}")
+
     def ValidateAudioImport(self):
         """
         Adds audio to project as object.
@@ -705,7 +810,7 @@ class Ui_MainWindow(object):
         path = Path(rawpath)
         name = self.ImportRecordingName.text()
 
-        for audio_file in self.audio_files:
+        for audio_file in self.AUDIOFILES:
             if audio_file.name == name:
                 print(f"Audio file '{name}' already exists in the project.")
                 return
@@ -723,7 +828,7 @@ class Ui_MainWindow(object):
                 length=num_frames
             )
 
-            self.audio_files.append(new_audio_file)
+            self.AUDIOFILES.append(new_audio_file)
 
             # Update stuff
             self.UpdateImportTab()
@@ -793,6 +898,55 @@ class Ui_MainWindow(object):
 
             print(f"Sample group '{original_group_name}' not found.")
 
+    def AddAudioToSGroup(self):
+        """
+        Add selected audio files to the selected sample group.
+        """
+        selected_audio = self.AudioFilesList.selectedIndexes()
+        selected_sgroup = self.ImporttabSampleGroupList.selectedIndexes()
+        if not selected_audio or not selected_sgroup:
+            print("No audio file or sample group selected.")
+            return
+
+        selected_sgroup = sorted(set(index.row() for index in selected_sgroup), reverse=True)
+        selected_audio = sorted(set(index.row() for index in selected_audio), reverse=True)
+        selected_sgroup = self.ImporttabSampleGroupList.item(selected_sgroup[0], 0)  # 0 = Group Name
+        selected_sgroup = self.SGroupNameToObject(selected_sgroup.text())
+
+        selected_audio = [self.AudioFilesList.item(index, 0) for index in selected_audio]  # 0 = Name
+        audio_file_objs = self.AudioNamesToObjects([audio.text() for audio in selected_audio])
+
+        print("Selected SGroup: ", selected_sgroup)
+        print("Selected Audio: ", selected_audio)
+
+
+
+        #get audio file objects
+        # audio_names = []
+        # audio_file_objs = []
+        # for index in selected_audio:
+        #     audio_file_item = self.AudioFilesList.item(index, 0)
+        #     if audio_file_item:
+        #         audio_file_name = audio_file_item.text()
+        #         audio_names.append(audio_file_name)
+        # for name in audio_names:
+        #     for audio_file in self.audio_files:
+        #         if audio_file.name == name:
+        #             audio_file_objs.append(audio_file)
+        #             break
+        
+        print("Audio file objects: ", audio_file_objs)
+
+        for audio_file in audio_file_objs:
+            if audio_file not in selected_sgroup.audio_files:
+                selected_sgroup.audio_files.append(audio_file)
+                print(f"Audio file '{audio_file.name}' added to sample group '{selected_sgroup.name}'.")
+            else:
+                print(f"Audio file '{audio_file.name}' already exists in sample group '{selected_sgroup.name}'.")
+
+        self.UpdateImportTab()
+        self.UpdateSliceTab()
+
     def AddNewSlice(self):
         # After method, update table according to new stuff
 
@@ -842,8 +996,8 @@ class Ui_MainWindow(object):
         selected = self.AudioFilesList.selectedIndexes()
         if selected:
             row = selected[0].row()
-            if 0 <= row < len(self.audio_files):
-                removed_file = self.audio_files.pop(row)
+            if 0 <= row < len(self.AUDIOFILES):
+                removed_file = self.AUDIOFILES.pop(row)
                 print(f"Audio file '{removed_file.name}' removed from the project.")
 
         self.UpdateImportTab()
@@ -917,10 +1071,69 @@ class Ui_MainWindow(object):
 
             return out
             
+    def SGroupNameToObject(self, sname):
+            """
+            Return list of Sgroup objects from a list of names.
+
+            :param sgrouplist: List of sgroup names.
+            """
+
+            if not sname:
+                return None
+            if sname == "":
+                return None
+            if not type(sname) == str:
+                return
+            if len(self.SGROUPS) == 0:
+                return None
+            
+
+
+            for sgroup in self.SGROUPS:
+                if sgroup.name == sname:
+                    out = sgroup
+
+            return out
+
+    def AudioNamesToObjects(self, audio_names):
+        """
+        Return list of AudioFile objects from a list of names.
+
+        :param audio_names: List of audio file names.
+        """
+
+        if not audio_names:
+            return None
+        if audio_names == []:
+            return None
+        if not type(audio_names) == list:
+            return
+        if len(self.AUDIOFILES) == 0:
+            return None
+        
+        out = []
+
+        for name in audio_names:
+            for audio_file in self.AUDIOFILES:
+                if audio_file.name == name:
+                    out.append(audio_file)
+
+        return out
+
+    def UpdateEverything(self):
+        """
+        Update all UI elements in the main window.
+        """
+        self.UpdateImportTab()
+        self.UpdateSliceTab()
+
     def UpdateSliceTab(self):
         """
         Update all UI elements in slice tab.
         """
+
+        self.Saved = False
+
         # SGroup selection table
         self.SampleGroupSelection.setRowCount(len(self.SGROUPS))
         for i, sgroup in enumerate(self.SGROUPS):
@@ -957,6 +1170,8 @@ class Ui_MainWindow(object):
         Get selected SGroups from Slice tab.
         '''
 
+        self.Saved = False
+
         if len(self.SGROUPS) == 0:
             return
 
@@ -974,29 +1189,81 @@ class Ui_MainWindow(object):
 
     def UpdateImportTab(self):
         """
-        Update all UI elements in import tab.
+        Update all UI elements in the import tab.
         """
 
-        # SGroups
-        self.ImporttabSampleGroupList.setRowCount(len(self.SGROUPS))
-        for i, sgroup in enumerate(self.SGROUPS):
-            self.ImporttabSampleGroupList.setItem(i, 0, QTableWidgetItem(sgroup.name)) # 0 = Name
-            self.ImporttabSampleGroupList.setItem(i, 1, QTableWidgetItem("")) # 1 = Unused
-            self.ImporttabSampleGroupList.setItem(i, 2, QTableWidgetItem("")) # 2 = Unused
-            SGroupAudioFiles = sgroup.audio_files
-            self.ImporttabSampleGroupList.setItem(i, 3, QTableWidgetItem(str(SGroupAudioFiles))) # 3 = audio Files Contained
+        self.Saved = False
 
+        selected_sgroups = self.ImporttabSampleGroupList.selectedIndexes()
+        selected_audio = self.AudioFilesList.selectedIndexes()
+
+        self.ImporttabSampleGroupList.setRowCount(0)
+        self.AudioFilesList.setRowCount(0)
+
+        # SGroups
+        if not self.SGROUPS:
+            print("No sample groups available.")
+            self.ImporttabSampleGroupList.setRowCount(0)
+        else:
+            self.ImporttabSampleGroupList.setRowCount(len(self.SGROUPS))
+            for i, sgroup in enumerate(self.SGROUPS):
+                if sgroup:
+                    self.ImporttabSampleGroupList.setItem(i, 0, QTableWidgetItem(sgroup.name))  #  0: Name
+                    self.ImporttabSampleGroupList.setItem(i, 1, QTableWidgetItem(""))  #  1: Unused
+                    self.ImporttabSampleGroupList.setItem(i, 2, QTableWidgetItem(""))  #  2: Unused
+                    SGroupAudioFiles = ", ".join([audio_file.name for audio_file in sgroup.audio_files])
+                    self.ImporttabSampleGroupList.setItem(i, 3, QTableWidgetItem(SGroupAudioFiles))  #  3: Audio Files
 
         # Audio Files
-        self.AudioFilesList.setRowCount(len(self.audio_files))
-        for i, audio_file in enumerate(self.audio_files):
-            self.AudioFilesList.setItem(i, 0, QTableWidgetItem(audio_file.name)) # 0 = Name
-            self.AudioFilesList.setItem(i, 1, QTableWidgetItem(audio_file.file_path)) # 1 = File Path
-            self.AudioFilesList.setItem(i, 2, QTableWidgetItem(str(audio_file.channels))) # 2 = Channels
-            self.AudioFilesList.setItem(i, 3, QTableWidgetItem(str(audio_file.sample_rate))) # 3 = Sample Rate
-            self.AudioFilesList.setItem(i, 4, QTableWidgetItem(str(audio_file.bit_depth))) # 4 = Bit Depth
-            self.AudioFilesList.setItem(i, 5, QTableWidgetItem(str(audio_file.length))) # 5 = Length - import script needs update
-            self.AudioFilesList.setItem(i, 6, QTableWidgetItem("")) # 6 = Unused
+        if not self.AUDIOFILES:
+            print("No audio files available.")
+            self.AudioFilesList.setRowCount(0)
+        else:
+            self.AudioFilesList.setRowCount(len(self.AUDIOFILES))
+            for i, audio_file in enumerate(self.AUDIOFILES):
+                if audio_file:
+                    self.AudioFilesList.setItem(i, 0, QTableWidgetItem(audio_file.name))  #  0: Name
+                    self.AudioFilesList.setItem(i, 1, QTableWidgetItem(audio_file.file_path))  #  1: File Path
+                    self.AudioFilesList.setItem(i, 2, QTableWidgetItem(str(audio_file.channels)))  #  2: Channels
+                    self.AudioFilesList.setItem(i, 3, QTableWidgetItem(str(audio_file.sample_rate)))  #  3: Sample Rate
+                    self.AudioFilesList.setItem(i, 4, QTableWidgetItem(str(audio_file.bit_depth)))  #  4: Bit Depth
+                    self.AudioFilesList.setItem(i, 5, QTableWidgetItem(str(audio_file.length)))  #  5: Length
+                    self.AudioFilesList.setItem(i, 6, QTableWidgetItem(""))  #  6: Unused
+
+        # restore selection
+        self.ImporttabSampleGroupList.setCurrentItem(self.ImporttabSampleGroupList.item(selected_sgroups[0].row(), 0)) if selected_sgroups else None
+        self.AudioFilesList.setCurrentItem(self.AudioFilesList.item(selected_audio[0].row(), 0)) if selected_audio else None
+
+        self.UpdateImportTabSGroupContentPreview()
+
+        print("Import tab updated successfully.")
+        
+    def UpdateImportTabSGroupContentPreview(self):
+        """
+        Update the content preview of the selected sample group in the import tab.
+        """
+
+        self.Saved = False
+
+        selectedsgroup = self.ImporttabSampleGroupList.selectedIndexes()
+
+        if selectedsgroup:
+            selectedsgroup = selectedsgroup[0].row()
+            selectedsgroup = self.ImporttabSampleGroupList.item(selectedsgroup, 0).text()
+        else:
+            return
+
+        SGroupItem = self.SGroupNameToObject(selectedsgroup)
+        print("SGroupItem: ", SGroupItem)
+
+        self.SampleGroupContentsPreview.setRowCount(0)  # Clear previous contents
+
+        for i, audio_file in enumerate(SGroupItem.audio_files):
+            if audio_file:
+                self.SampleGroupContentsPreview.setRowCount(len(SGroupItem.audio_files))
+                self.SampleGroupContentsPreview.setItem(i, 0, QTableWidgetItem(audio_file.name))  # 0 = Name
+
+
 
 def GetWavInfo(file_path: str) -> tuple[int, int, int, int]:
     """
