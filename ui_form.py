@@ -1,5 +1,7 @@
 from ast import Import
 import pickle
+from re import U
+import sys
 import os
 import select
 import struct
@@ -31,7 +33,6 @@ NOTE_NAMES = [
 ]
 
 
-
 class AudioFile:
     def __init__(self, name, file_path, channels, sample_rate, bit_depth, length):
         self.name = name
@@ -57,21 +58,26 @@ class SampleGroup:
 
     def __repr__(self):
         return f"SampleGroup({self.name}, {self.audio_files})"
-        
+
 class AudioSample:
-    def __init__(self, start, end, length, sample_groups, samples=None):
+    def __init__(self, start, end, samples=None, SR=44100):
 
         self.start = start
         self.end = end
-        self.length = length
-        self.sample_groups = sample_groups
-        self.samples = samples if samples is not None else []
+        self.samples = samples if samples is not None else [[]] # 2d array
+        self.SR = SR
+        self.channels = len(self.samples)
 
 class Slice:
-    def __init__(self, start, end, sample_groups, ):
+    def __init__(self, start, end, sample_groups, analyzed=False, note=None, rr=None, UID=None, audioData=None):
         self.start = start
         self.end = end
         self.sample_groups = sample_groups 
+        self.analyzed = analyzed
+        self.note = note
+        self.rr = rr
+        self.UID = UID
+        self.audioData = audioData if audioData is not None else []
 
     def __repr__(self):
         return f"AudioSample({self.start}, {self.end}, {self.sample_groups})"
@@ -96,6 +102,8 @@ class Ui_MainWindow(object):
         self.SLICES = []
 
         self.SliceTabSelectedSGroups = []
+
+        self.UIDCounter = 0
 
     def setupUi(self, MainWindow):
         DEV = True
@@ -122,6 +130,7 @@ class Ui_MainWindow(object):
         self.actionSave_As.setObjectName(u"actionSave_As")
         self.actionExit = QAction(MainWindow)
         self.actionExit.setObjectName(u"actionExit")
+        self.actionExit.triggered.connect(self.Exit)
         
         self.menuBar = QMenuBar(MainWindow)
         self.menuBar.setObjectName(u"menuBar")
@@ -359,13 +368,14 @@ class Ui_MainWindow(object):
         if not DEV:
             self.SampleGroupSelection.hideColumn(1)
             self.SampleGroupSelection.hideColumn(2)
+            self.SampleGroupSelection.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # Disable horizontal scrollbar
         self.SampleGroupSelection.setColumnWidth(0, 138)
         self.SampleGroupSelection.setColumnWidth(1, 10)
         self.SampleGroupSelection.setColumnWidth(2, 10)
         self.SampleGroupSelection.setColumnWidth(3, 10)
         self.SampleGroupSelection.verticalHeader().setVisible(False)
         self.SampleGroupSelection.horizontalHeader().setVisible(False)
-        self.SampleGroupSelection.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # Disable horizontal scrollbar
+        
         self.SampleGroupSelection.clicked.connect(self.UpdateSelectedSGroup)
 
         self.SliceGroupAllButton = QPushButton(self.Slice)
@@ -428,7 +438,7 @@ class Ui_MainWindow(object):
         self.SortTabSGroupfilter.addItem("")
         self.SortTabSGroupfilter.setObjectName(u"SortTabSGroupfilter")
         self.SortTabSGroupfilter.setGeometry(QRect(10, 10, 201, 24))
-        #self.SortTabSGroupfilter.currentIndexChanged.connect(self.update_sort_tab_slice_list)
+        self.SortTabSGroupfilter.currentIndexChanged.connect(self.SortTabSliceListUpdate)
         #self.SortTabSGroupfilter.currentIndexChanged.connect(self.update_sort_preview_audio_select)
      
         self.SortAudioPreview = QGroupBox(self.Sort)
@@ -683,6 +693,14 @@ class Ui_MainWindow(object):
         self.LabelSortRRSelection.setText(QCoreApplication.translate("MainWindow", u"Round Robins", None))
     # retranslateUi
 
+    def Exit(self):
+        """
+        Exit the application.
+        """
+        self.NotSavedPrompt("You have unsaved changes. Do you want to save before exiting?")
+        print("Exiting application.")
+        sys.exit()
+
     def ImportAudioFile(self):
         """
         File Opening Dialog, WAV only.
@@ -765,9 +783,30 @@ class Ui_MainWindow(object):
                     return
                 self.AUDIOFILES, self.SGROUPS, self.SLICES, _ = pickle.loads(data)
 
+        # UID Stuff
+
+
+
+        try:
+            self.UIDCounter = max((slice.UID for slice in self.SLICES if slice.UID is not None), default=0) + 1
+        except AttributeError:
+            print("Error: One or more slices are missing the UID attribute.")
+            self.UIDCounter = 1
 
         # Update the UI with loaded data
         self.UpdateEverything()
+
+    def EnsureUniqueUIDs(self):
+        """
+        Ensure all Slice objects have unique UIDs.
+        If duplicates are found, assign new unique UIDs.
+        """
+        self.UIDCounter = 0
+        for slice in self.SLICES:
+            self.UIDCounter += 1
+            slice.UID = self.UIDCounter
+            print(f"Assigned new UID {slice.UID} to slice with start {slice.start} and end {slice.end}.")
+        print("All slices now have unique UIDs.")
 
     def SaveProject(self):
         """
@@ -791,7 +830,7 @@ class Ui_MainWindow(object):
             self.project_file_path = save_file_path
 
 
-
+        # self.EnsureUniqueUIDs()
 
         with open(self.project_file_path, "wb") as f:
             pickle.dump(
@@ -859,8 +898,7 @@ class Ui_MainWindow(object):
         print(f"Sample group '{name}' added.")
         self.AddSampleGroupNameEdit.clear()
         #Update UI stuff
-        self.UpdateSliceTab()
-        self.UpdateImportTab()
+        self.UpdateEverything()
 
     def CloneSampleGroup(self):
         """
@@ -897,6 +935,8 @@ class Ui_MainWindow(object):
                     return
 
             print(f"Sample group '{original_group_name}' not found.")
+        
+        self.UpdateEverything()
 
     def AddAudioToSGroup(self):
         """
@@ -950,6 +990,8 @@ class Ui_MainWindow(object):
     def AddNewSlice(self):
         # After method, update table according to new stuff
 
+        self.UIDCounter += 1
+
         # Start Point
         if self.SampleCutpointInput.text() == '':
             return
@@ -978,7 +1020,7 @@ class Ui_MainWindow(object):
             selected_groups = []
 
         # Create a new slice
-        new_slice = Slice(startpoint, endpoint, selected_groups)
+        new_slice = Slice(startpoint, endpoint, selected_groups, False, None, None, self.UIDCounter)
 
         self.SLICES.append(new_slice)
         print("SLICES: ", self.SLICES)
@@ -1120,12 +1162,90 @@ class Ui_MainWindow(object):
 
         return out
 
+    def SortTabSGroupFilterUpdate(self):
+        """
+        Populate the SortTabSGroupfilter with sgroups.
+        """
+        self.SortTabSGroupfilter.clear()  # Clear existing items
+        self.SortTabSGroupfilter.addItem("SGroup Filter")  # Add default text
+        index = self.SortTabSGroupfilter.findText("SGroup Filter")
+        if index != -1:
+            self.SortTabSGroupfilter.model().item(index).setSizeHint(QtCore.QSize(0, 0))
+
+        # Populate with sample group names
+        for sgroup in self.SGROUPS:
+            if sgroup:
+                self.SortTabSGroupfilter.addItem(sgroup.name)
+
+    def SortTabSliceListUpdate(self):
+        """
+        slices and stuff, click on them
+        """
+        selected_group_name = self.SortTabSGroupfilter.currentText()
+
+        # Clear the SortTabSliceList
+        self.SortTabSliceList.clearContents()
+        self.SortTabSliceList.setRowCount(0)
+
+        # If "SGroup Filter" is selected, show nothing
+        if selected_group_name == "SGroup Filter":
+            return
+
+        sgroup = self.SGroupNameToObject(selected_group_name)
+
+        if not sgroup:
+            return  
+
+        slices = []
+        for i in range(self.Sample_Cut_Data_Table.rowCount()):
+            item = self.Sample_Cut_Data_Table.item(i, 4)
+            if item and sgroup.name in item.text():
+                slices.append(self.SLICES[i])
+
+        # Populate the SortTabSliceList with slices
+        self.SortTabSliceList.setRowCount(len(slices))
+        for i, slice in enumerate(slices):
+            self.SortTabSliceList.setItem(i, 0, QTableWidgetItem(str(slice.UID))) # uid it is
+            self.SortTabSliceList.setItem(i, 1, QTableWidgetItem("")) # 1 = note
+            self.SortTabSliceList.setItem(i, 2, QTableWidgetItem(str(slice.start))) # 2 = Absolute Startpoint
+            self.SortTabSliceList.setItem(i, 3, QTableWidgetItem(str(slice.end))) # 3 = Absolute Endpoint
+
+    def SortTabAudioAnalysisUpdate(self):
+        """
+        Analyze the selected slice and update the audio preview.
+        """
+        selected_slice = self.SortTabSliceList.selectedIndexes()
+        if not selected_slice:
+            print("No slice selected.")
+            return
+
+        selected_row = selected_slice[0].row()
+        SliceObject = self.SliceUIDToObject(self.SortTabSliceList.item(selected_row, 0).text())
+        if not SliceObject:
+            print("No slice object found.")
+            return
+        
+        # Cache audio data for the selected slice
+
+
+
+
+    def SliceUIDToObject(self, uid):
+        """
+        Return the slice object corresponding to the given UID.
+        """
+        for slice in self.SLICES:
+            if slice.UID == uid:
+                return slice
+        return None
+
     def UpdateEverything(self):
         """
         Update all UI elements in the main window.
         """
         self.UpdateImportTab()
         self.UpdateSliceTab()
+        self.UpdateSortTab()
 
     def UpdateSliceTab(self):
         """
@@ -1263,6 +1383,16 @@ class Ui_MainWindow(object):
                 self.SampleGroupContentsPreview.setRowCount(len(SGroupItem.audio_files))
                 self.SampleGroupContentsPreview.setItem(i, 0, QTableWidgetItem(audio_file.name))  # 0 = Name
 
+    def UpdateSortTab(self):
+        """
+        Update all UI elements in the sort tab.
+        """
+
+        self.Saved = False
+
+        # SGroup selection table
+        self.SortTabSGroupfilter.clear()
+        self.SortTabSGroupFilterUpdate()
 
 
 def GetWavInfo(file_path: str) -> tuple[int, int, int, int]:
