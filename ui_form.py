@@ -69,7 +69,7 @@ class AudioSample:
         self.channels = len(self.samples)
 
 class Slice:
-    def __init__(self, start, end, sample_groups, analyzed=False, note=None, rr=None, UID=None, audioData=None):
+    def __init__(self, start, end, sample_groups, analyzed=False, note=None, rr=None, UID=None):
         self.start = start
         self.end = end
         self.sample_groups = sample_groups 
@@ -77,10 +77,9 @@ class Slice:
         self.note = note
         self.rr = rr
         self.UID = UID
-        self.audioData = audioData if audioData is not None else []
 
     def __repr__(self):
-        return f"AudioSample({self.start}, {self.end}, {self.sample_groups})"
+        return f"Slice({self.start}, {self.end}, {self.sample_groups})"
 
 class ClipboardSpinBox(QSpinBox):
     def __init__(self, parent=None, paste_callback=None):
@@ -100,6 +99,8 @@ class Ui_MainWindow(object):
         self.AUDIOFILES = []
         self.SGROUPS = []
         self.SLICES = []
+
+        self.CACHEDAUDIOFILES = [] # tuples of slice UID, audio name, audio data
 
         self.SliceTabSelectedSGroups = []
 
@@ -402,7 +403,7 @@ class Ui_MainWindow(object):
       
         self.AutoClipboardCheckbox = QCheckBox(self.Slice)
         self.AutoClipboardCheckbox.setObjectName(u"AutoClipboardCheckbox")
-        self.AutoClipboardCheckbox.setGeometry(QRect(600, 60, 150, 25))  # Adjust position as needed
+        self.AutoClipboardCheckbox.setGeometry(QRect(600, 60, 150, 25))
         self.AutoClipboardCheckbox.setText("Auto Clipboard")
        
         self.MainTabs.addTab(self.Slice, "")
@@ -433,6 +434,7 @@ class Ui_MainWindow(object):
             self.SortTabSliceList.hideColumn(0)
             self.SortTabSliceList.hideColumn(3)
         #self.SortTabSliceList.itemSelectionChanged.connect(self.update_waveform_preview)
+        self.SortTabSliceList.itemSelectionChanged.connect(self.SortTabAudioAnalysisUpdate)
     
         self.SortTabSGroupfilter = QComboBox(self.Sort)
         self.SortTabSGroupfilter.addItem("")
@@ -449,18 +451,18 @@ class Ui_MainWindow(object):
         self.AudioPreviewContainer.setGeometry(QRect(10, 20, 531, 161))
         self.AudioPreviewContainer.setObjectName(u"AudioPreviewContainer")
 
-        self.AudioPreviewPlaceholder = pg.PlotWidget(self.AudioPreviewContainer)
-        self.AudioPreviewPlaceholder.setGeometry(QRect(0, 0, 531, 161))
-        self.AudioPreviewPlaceholder.setObjectName(u"AudioPreviewPlaceholder")
-        self.AudioPreviewPlaceholder.setBackground("lightgray")  # Set background color
-        self.AudioPreviewPlaceholder.showGrid(x=False, y=False)  # Hide grid
-        self.AudioPreviewPlaceholder.getPlotItem().hideAxis("bottom")  # Hide x-axis
-        self.AudioPreviewPlaceholder.getPlotItem().hideAxis("left")  # Hide y-axis
-        self.AudioPreviewPlaceholder.getPlotItem().setMenuEnabled(False)  # Disable context menu
-        self.AudioPreviewPlaceholder.getPlotItem().setLimits(yMin=-1, yMax=1)  # Limit y-axis to -1 to +1
-        self.AudioPreviewPlaceholder.setMouseEnabled(x=True, y=False)      # Disable vertical drag
-        self.AudioPreviewPlaceholder.plotItem.setMenuEnabled(False)        # Hide context menu
-        self.AudioPreviewPlaceholder.plotItem.setMouseEnabled(y=False)     # Ensure vertical zoom/drag is off
+        self.WaveformVisu = pg.PlotWidget(self.AudioPreviewContainer)
+        self.WaveformVisu.setGeometry(QRect(0, 0, 531, 161))
+        self.WaveformVisu.setObjectName(u"AudioPreviewPlaceholder")
+        self.WaveformVisu.setBackground("lightgray")  # Set background color
+        self.WaveformVisu.showGrid(x=False, y=False)  # Hide grid
+        self.WaveformVisu.getPlotItem().hideAxis("bottom")  # Hide x-axis
+        self.WaveformVisu.getPlotItem().hideAxis("left")  # Hide y-axis
+        self.WaveformVisu.getPlotItem().setMenuEnabled(False)  # Disable context menu
+        self.WaveformVisu.getPlotItem().setLimits(yMin=-1, yMax=1)  # Limit y-axis to -1 to +1
+        self.WaveformVisu.setMouseEnabled(x=True, y=False)      # Disable vertical drag
+        self.WaveformVisu.plotItem.setMenuEnabled(False)        # Hide context menu
+        self.WaveformVisu.plotItem.setMouseEnabled(y=False)     # Ensure vertical zoom/drag is off
         #self.AudioPreviewPlaceholder.sigRangeChanged.connect(self.on_waveform_range_changed)
 
         self.SortPreviewPlayButton = QPushButton(self.SortAudioPreview)
@@ -1166,8 +1168,8 @@ class Ui_MainWindow(object):
         """
         Populate the SortTabSGroupfilter with sgroups.
         """
-        self.SortTabSGroupfilter.clear()  # Clear existing items
-        self.SortTabSGroupfilter.addItem("SGroup Filter")  # Add default text
+        self.SortTabSGroupfilter.clear() 
+        self.SortTabSGroupfilter.addItem("SGroup Filter")  
         index = self.SortTabSGroupfilter.findText("SGroup Filter")
         if index != -1:
             self.SortTabSGroupfilter.model().item(index).setSizeHint(QtCore.QSize(0, 0))
@@ -1210,25 +1212,185 @@ class Ui_MainWindow(object):
             self.SortTabSliceList.setItem(i, 2, QTableWidgetItem(str(slice.start))) # 2 = Absolute Startpoint
             self.SortTabSliceList.setItem(i, 3, QTableWidgetItem(str(slice.end))) # 3 = Absolute Endpoint
 
+    def WaveformPlot(self, audio_data):
+        """
+        Plot the waveform of the audio data.
+        """
+        if audio_data is None:
+            print("No audio data to plot.")
+            return
+
+        # Create a new figure
+        self.WaveformVisu.figure(figsize=(10, 4))
+        self.WaveformVisu.plot(audio_data)
+        self.WaveformVisu.title("Waveform")
+        self.WaveformVisu.xlabel("Sample Index")
+        self.WaveformVisu.ylabel("Amplitude")
+        self.WaveformVisu.grid()
+        self.WaveformVisu.show()
+
     def SortTabAudioAnalysisUpdate(self):
         """
         Analyze the selected slice and update the audio preview.
         """
+
+        print(self.SLICES)
+
         selected_slice = self.SortTabSliceList.selectedIndexes()
         if not selected_slice:
             print("No slice selected.")
             return
 
         selected_row = selected_slice[0].row()
-        SliceObject = self.SliceUIDToObject(self.SortTabSliceList.item(selected_row, 0).text())
+        uid_text = self.SortTabSliceList.item(selected_row, 0).text()
+        try:
+            uid = int(uid_text)
+        except (TypeError, ValueError):
+            print(f"Invalid UID value: {uid_text}")
+            return
+        SliceObject = self.SliceUIDToObject(uid)
+        print("Selected Slice: ", SliceObject)
         if not SliceObject:
             print("No slice object found.")
             return
         
-        # Cache audio data for the selected slice
+        Audio_Names , Audio_Data = self.GetAudioData(SliceObject)
+
+        if Audio_Names is None or Audio_Data is None:
+            print("Error getting audio data.")
+            return
+        
+        # Populate audio selection scrollbox
 
 
+        sgroup_audio_files = []
+        for sgroup in SliceObject.sample_groups:
+            for audio_file in sgroup.audio_files:
+                if audio_file not in sgroup_audio_files:
+                    sgroup_audio_files.append(audio_file)
 
+        self.SortPreviewAudioSelect.clear()
+        for audio_file in sgroup_audio_files:
+            self.SortPreviewAudioSelect.addItem(audio_file.name)
+
+        # Populate audio preview
+
+        #get selected audio file
+        selected_audio = self.SortPreviewAudioSelect.currentText()
+        #get audio data from cache
+        audio_data = None
+        for tup in self.CACHEDAUDIOFILES:
+            if tup[0] == SliceObject.UID and tup[1] == selected_audio:
+                audio_data = tup[2]
+                break
+
+        if audio_data is None:
+            print("Audio data for selected file not found in cache.")
+            return
+
+        print(f"Loaded audio data for {selected_audio}")
+
+        # Plot the waveform
+        self.WaveformPlot(audio_data)
+                                                         # REDO ALL AUDIO LOADING THINGS
+            
+
+    def GetAudioData(self, slice):
+        """
+        Get cached audio data for the selected slice.
+        """
+        if type(slice) != Slice:
+            print("Invalid slice object.")
+            return None, None
+
+        if self.CheckSliceAudioCache(slice):
+            print("Slice audio data already cached.")
+        else:
+            print("Slice audio data not cached, caching now.")
+            self.CacheSliceAudioData(slice)
+
+        # Check if slice uid is in cached list
+        for tuple in self.CACHEDAUDIOFILES:
+            if tuple[0] == slice.UID:
+                print("Slice audio data already cached.")
+                return tuple[1], tuple[2]
+            
+        return None, None
+
+    def CheckSliceAudioCache(self, slice):
+        """
+        Check if audio data for the selected slice is already cached.
+        """
+        if type(slice) != Slice:
+            print("Invalid slice object.")
+            return
+
+        # Check if slice uid is in cached list
+        for tuple in self.CACHEDAUDIOFILES:
+            if tuple[0] == slice.UID:
+                if tuple[1] == slice.audio_file.name:
+                    print("Slice audio data already cached.")
+                    return True
+
+        print("Slice audio data not cached.")
+        return False
+
+    def CacheSliceAudioData(self, slice):
+        """
+        Cache audio data for the selected slice.
+        """
+        if type(slice) != Slice:
+            print("Invalid slice object.")
+            return
+        
+        # Check if audio data is already cached
+        if self.CheckSliceAudioCache(slice):
+            print("Slice audio data already cached.")
+            return
+
+        #Get slice audio files
+        slice_audio_files = []
+        for sgroup in slice.sample_groups:
+            for audio_file in sgroup.audio_files:
+                if audio_file not in slice_audio_files:
+                    slice_audio_files.append(audio_file)
+
+        #Cache audio files
+        for audio_file in slice_audio_files:
+            self.CacheAudioFile(audio_file, slice.UID)  
+
+    def CacheAudioFile(self, audio_file, UID):
+        """
+        Cache audio data for the selected audio file.
+        """
+        print("Caching audio file...")
+        if type(audio_file) != AudioFile:
+            print("Invalid audio file object.")
+            return
+        print(f"Loading audio file {audio_file.name}")
+        file_path = audio_file.file_path
+
+        if not os.path.isfile(file_path):
+            print(f"File not found: {file_path}")
+            return
+
+        
+
+        try:
+            with PyWave.open(file_path, 'r') as wav_file:
+
+                # Read the audio data
+                audio_data = wav_file.read()
+                audio_data = np.frombuffer(audio_data, dtype=np.int16)
+                print(audio_data)
+
+        except Exception as e:
+            print(f"Error loading audio file: {e}")
+            return
+
+        # Cache the audio data
+        self.CACHEDAUDIOFILES.append((UID, audio_file.name, audio_data))
+        print(f"Audio file {audio_file.name} cached successfully.")
 
     def SliceUIDToObject(self, uid):
         """
@@ -1414,3 +1576,55 @@ def GetWavInfo(file_path: str) -> tuple[int, int, int, int]:
     except Exception as e:
         print(f"Error reading WAV file: {e}")
         return -1, -1, -1, -1
+
+def ConverTo16bInt(raw_data, bits_per_sample, sample_format='PCM'):
+    """
+    Convert raw audio bytes of any supported bit depth/format to 16-bit PCM.
+
+    Args:
+        raw_data (bytes): The raw audio byte stream.
+        bits_per_sample (int): Bit depth of the input data (8, 16, 24, 32, 64).
+        sample_format (str): 'PCM' or 'FLOAT'.
+
+    Returns:
+        np.ndarray: 16-bit integer numpy array.
+    """
+    if sample_format.upper() == 'FLOAT':
+        # FLOAT input: determine dtype
+        if bits_per_sample == 32:
+            dtype = np.float32
+        elif bits_per_sample == 64:
+            dtype = np.float64
+        else:
+            raise ValueError("Unsupported float bit depth")
+
+        float_data = np.frombuffer(raw_data, dtype=dtype)
+        float_data = np.clip(float_data, -1.0, 1.0)  # clip to avoid overflow
+        return (float_data * 32767).astype(np.int16)
+
+    elif sample_format.upper() == 'PCM':
+        if bits_per_sample == 8:
+            # Unsigned 8-bit PCM
+            data = np.frombuffer(raw_data, dtype=np.uint8)
+            return ((data.astype(np.int16) - 128) << 8)  # Center and scale
+        elif bits_per_sample == 16:
+            return np.frombuffer(raw_data, dtype=np.int16)
+        elif bits_per_sample == 24:
+            # 24-bit PCM is unpacked manually
+            samples = np.frombuffer(raw_data, dtype=np.uint8)
+            samples = samples.reshape(-1, 3)
+            # Combine bytes (little endian): pad with sign byte
+            int32 = (samples[:, 0].astype(np.int32) |
+                     (samples[:, 1].astype(np.int32) << 8) |
+                     (samples[:, 2].astype(np.int32) << 16))
+            # Sign extension for 24-bit
+            int32 = np.where(int32 & 0x800000, int32 | ~0xFFFFFF, int32)
+            return (int32 >> 8).astype(np.int16)
+        elif bits_per_sample == 32:
+            # Convert 32-bit int to 16-bit
+            data = np.frombuffer(raw_data, dtype=np.int32)
+            return (data >> 16).astype(np.int16)
+        else:
+            raise ValueError("Unsupported PCM bit depth")
+    else:
+        raise ValueError("Unsupported sample format: must be 'PCM' or 'FLOAT'")
