@@ -100,7 +100,7 @@ class Ui_MainWindow(object):
         self.SGROUPS = []
         self.SLICES = []
 
-        self.CACHEDAUDIOFILES = [] # tuples of slice UID, audio name, audio data
+        self.CACHEDAUDIOFILES = [] # tuples of audio name, audio data
 
         self.SliceTabSelectedSGroups = []
 
@@ -487,7 +487,7 @@ class Ui_MainWindow(object):
         self.SortPreviewAudioSelect = QComboBox(self.SortAudioPreview)
         self.SortPreviewAudioSelect.setObjectName(u"SortPreviewAudioSelect")
         self.SortPreviewAudioSelect.setGeometry(QRect(381, 190, 161, 24))
-        #self.SortPreviewAudioSelect.currentIndexChanged.connect(self.update_waveform_preview)
+        self.SortPreviewAudioSelect.currentIndexChanged.connect(self.AudioWaveformUpdate)
      
         self.LabelPlaybackVolume = QLabel(self.SortAudioPreview)
         self.LabelPlaybackVolume.setObjectName(u"LabelPlaybackVolume")
@@ -748,6 +748,7 @@ class Ui_MainWindow(object):
         self.AUDIOFILES = []
         self.SGROUPS = []
         self.SLICES = []
+        self.CACHEDAUDIOFILES = []
         print("New project created.")
 
         # Update UI stuff
@@ -1220,14 +1221,47 @@ class Ui_MainWindow(object):
             print("No audio data to plot.")
             return
 
-        # Create a new figure
-        self.WaveformVisu.figure(figsize=(10, 4))
-        self.WaveformVisu.plot(audio_data)
-        self.WaveformVisu.title("Waveform")
-        self.WaveformVisu.xlabel("Sample Index")
-        self.WaveformVisu.ylabel("Amplitude")
-        self.WaveformVisu.grid()
-        self.WaveformVisu.show()
+        audio_data = audio_data.tolist()
+
+        start_time = 0
+        end_time = len(audio_data)
+
+
+        try:
+            samples = audio_data
+            self.WaveformVisu.clear()  
+
+            self.WaveformVisu.setXRange(start_time, end_time, padding=0)
+            self.WaveformVisu.setYRange(-1, 1, padding=0.1)
+
+            time_axis = np.linspace(start_time, end_time, num=len(samples))
+            maax = max([max(samples), abs(min(samples))])
+            if maax == 0:
+                maax = 1  # let's try to not break mathematics today
+            samples = [n / maax for n in samples]
+            self.WaveformVisu.plot(time_axis, samples, pen="blue")
+
+        #     # Detect pitch and update labels and inputs
+        #     pitch_difference, note = detect_pitch(samples, samplerate=44100)  # Assuming 44100 Hz sample rate
+        #     if pitch_difference is not None and note:
+        #         self.FrequencyLabel.setText(f"Pitch Difference: {pitch_difference:.2f} cents")
+        #         self.NoteLabel.setText(f"Note: {note}")
+
+        #         # Update Octave and Note inputs
+        #         note_name, octave = note[:-1], int(note[-1])  # Split note into name and octave
+        #         self.NoteSelect.setCurrentText(note_name)
+        #         self.OctaveSelect.setValue(octave)
+        #     else:
+        #         self.FrequencyLabel.setText("Pitch Difference: N/A")
+        #         self.NoteLabel.setText("Note: N/A")
+
+        except Exception as e:
+            print(f"Error loading audio file: {e}")
+            self.FrequencyLabel.setText("Pitch Difference: N/A")
+            self.NoteLabel.setText("Note: N/A")
+            self.WaveformVisu.clear()  # Clear the waveform display
+            
+
 
     def SortTabAudioAnalysisUpdate(self):
         """
@@ -1254,46 +1288,72 @@ class Ui_MainWindow(object):
             print("No slice object found.")
             return
         
-        Audio_Names , Audio_Data = self.GetAudioData(SliceObject)
+        Slice_Audio = self.GetAudioData(SliceObject)
 
-        if Audio_Names is None or Audio_Data is None:
+        if Slice_Audio is None:
             print("Error getting audio data.")
             return
         
-        # Populate audio selection scrollbox
-
-
-        sgroup_audio_files = []
-        for sgroup in SliceObject.sample_groups:
-            for audio_file in sgroup.audio_files:
-                if audio_file not in sgroup_audio_files:
-                    sgroup_audio_files.append(audio_file)
+        Names = []
+        for tuple in Slice_Audio:
+            Names.append(tuple[0])
 
         self.SortPreviewAudioSelect.clear()
-        for audio_file in sgroup_audio_files:
-            self.SortPreviewAudioSelect.addItem(audio_file.name)
+        for name in Names:
+            self.SortPreviewAudioSelect.addItem(name)
 
-        # Populate audio preview
+        self.AudioWaveformUpdate()
+
+        
+
+                                                         # REDO ALL AUDIO LOADING THINGS
+
+    def AudioWaveformUpdate(self):   
+        selected_slice = self.SortTabSliceList.selectedIndexes()
+        if not selected_slice:
+            print("No slice selected.")
+            return
+        selected_row = selected_slice[0].row()
+        uid_text = self.SortTabSliceList.item(selected_row, 0).text()
+        try:
+            uid = int(uid_text)
+        except (TypeError, ValueError):
+            print(f"Invalid UID value: {uid_text}")
+            return
+        SliceObject = self.SliceUIDToObject(uid)
+        print("Selected Slice: ", SliceObject)
+        if not SliceObject:
+            print("No slice object found.")
+            return
+        Slice_Audio = self.GetAudioData(SliceObject)
+
+        if Slice_Audio is None:
+            print("Error getting audio data.")
+            return
 
         #get selected audio file
         selected_audio = self.SortPreviewAudioSelect.currentText()
-        #get audio data from cache
+
+        #get audio data from selected name
+
         audio_data = None
-        for tup in self.CACHEDAUDIOFILES:
-            if tup[0] == SliceObject.UID and tup[1] == selected_audio:
-                audio_data = tup[2]
+        for audio_file in Slice_Audio:
+            if audio_file[0] == selected_audio:
+                audio_data = audio_file[1]
                 break
+
+        #apply the slice range to the audio data
+        start = SliceObject.start
+        end = SliceObject.end
 
         if audio_data is None:
             print("Audio data for selected file not found in cache.")
             return
 
-        print(f"Loaded audio data for {selected_audio}")
+        audio_data = audio_data[start:end]
 
-        # Plot the waveform
+
         self.WaveformPlot(audio_data)
-                                                         # REDO ALL AUDIO LOADING THINGS
-            
 
     def GetAudioData(self, slice):
         """
@@ -1301,39 +1361,45 @@ class Ui_MainWindow(object):
         """
         if type(slice) != Slice:
             print("Invalid slice object.")
-            return None, None
+            return None
 
-        if self.CheckSliceAudioCache(slice):
-            print("Slice audio data already cached.")
-        else:
-            print("Slice audio data not cached, caching now.")
-            self.CacheSliceAudioData(slice)
 
-        # Check if slice uid is in cached list
-        for tuple in self.CACHEDAUDIOFILES:
-            if tuple[0] == slice.UID:
-                print("Slice audio data already cached.")
-                return tuple[1], tuple[2]
+        self.CacheSliceAudioData(slice)
+
+        out = []
+
+        for sgroup in slice.sample_groups:
+            for audio_file in sgroup.audio_files:
+                name = audio_file.name
+                for cached_audio in self.CACHEDAUDIOFILES:
+                    if cached_audio[0] == name:
+                        out.append([name, cached_audio[1]])
             
-        return None, None
+        return out
 
     def CheckSliceAudioCache(self, slice):
         """
         Check if audio data for the selected slice is already cached.
+        Return audio names of uncached audio
         """
         if type(slice) != Slice:
             print("Invalid slice object.")
             return
 
-        # Check if slice uid is in cached list
-        for tuple in self.CACHEDAUDIOFILES:
-            if tuple[0] == slice.UID:
-                if tuple[1] == slice.audio_file.name:
-                    print("Slice audio data already cached.")
-                    return True
+        out = []
 
-        print("Slice audio data not cached.")
-        return False
+        for sgroup in slice.sample_groups:
+            for audio_file in sgroup.audio_files:
+                name = audio_file.name
+                cached = False
+                for cached_audio in self.CACHEDAUDIOFILES:
+                    if cached_audio[0] == name:
+                        cached = True
+                        break
+                if not cached:
+                    out.append(audio_file)
+
+        return out
 
     def CacheSliceAudioData(self, slice):
         """
@@ -1343,23 +1409,16 @@ class Ui_MainWindow(object):
             print("Invalid slice object.")
             return
         
-        # Check if audio data is already cached
-        if self.CheckSliceAudioCache(slice):
-            print("Slice audio data already cached.")
+        to_cache = self.CheckSliceAudioCache(slice)
+        if not to_cache:
+            print("All audio files for this slice are already cached.")
             return
 
-        #Get slice audio files
-        slice_audio_files = []
-        for sgroup in slice.sample_groups:
-            for audio_file in sgroup.audio_files:
-                if audio_file not in slice_audio_files:
-                    slice_audio_files.append(audio_file)
-
         #Cache audio files
-        for audio_file in slice_audio_files:
-            self.CacheAudioFile(audio_file, slice.UID)  
+        for audio_file in to_cache:
+            self.CacheAudioFile(audio_file)  
 
-    def CacheAudioFile(self, audio_file, UID):
+    def CacheAudioFile(self, audio_file):
         """
         Cache audio data for the selected audio file.
         """
@@ -1389,7 +1448,7 @@ class Ui_MainWindow(object):
             return
 
         # Cache the audio data
-        self.CACHEDAUDIOFILES.append((UID, audio_file.name, audio_data))
+        self.CACHEDAUDIOFILES.append((audio_file.name, audio_data))
         print(f"Audio file {audio_file.name} cached successfully.")
 
     def SliceUIDToObject(self, uid):
