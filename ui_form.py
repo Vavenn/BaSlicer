@@ -14,7 +14,8 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QTabWidget, QTableWidget, QTableWidgetItem, 
     QGroupBox, QLineEdit, QPushButton, QLabel, QSpinBox, QCheckBox, QComboBox, 
     QSlider, QFileDialog, QProgressDialog, QAbstractItemView, QSizePolicy, 
-    QMenuBar, QMenu, QWidget, QMessageBox
+    QMenuBar, QMenu, QWidget, QMessageBox,
+    QVBoxLayout, QHBoxLayout, QGridLayout, QSpacerItem
 )
 from PySide6 import QtCore
 from PySide6.QtMultimedia import QAudioOutput, QAudioFormat
@@ -108,7 +109,7 @@ class Ui_MainWindow(object):
 
     def setupUi(self, MainWindow):
         DEV = True
-        self.audio_output = QAudioOutput()  # Initialize audio_output
+        self.audio_output = QAudioOutput()
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
         MainWindow.resize(1227, 604)
@@ -152,168 +153,175 @@ class Ui_MainWindow(object):
         self.centralwidget.setObjectName(u"centralwidget")
         MainWindow.setCentralWidget(self.centralwidget)
         self.MainTabs = QTabWidget(self.centralwidget)
-        #self.MainTabs.currentChanged.connect(self.updatetabs)
+        MainTabsLayout = QVBoxLayout(self.centralwidget)
+        MainTabsLayout.addWidget(self.MainTabs)
+        self.centralwidget.setLayout(MainTabsLayout)
 
-        self.MainTabs.setObjectName(u"MainTabs")
-        self.MainTabs.setGeometry(QRect(-4, -1, 1251, 571))
-        sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.MainTabs.sizePolicy().hasHeightForWidth())
-        self.MainTabs.setSizePolicy(sizePolicy)
- 
             #           IMPORT TAB
 
         self.Import = QWidget()
         self.Import.setObjectName(u"Import")
+        ImportLayout = QHBoxLayout(self.Import)
+        self.Import.setLayout(ImportLayout)
 
-        self.SampleGroupConfig = QGroupBox(self.Import)
-        self.SampleGroupConfig.setObjectName(u"SampleGroupConfig")
-        self.SampleGroupConfig.setGeometry(QRect(650, 20, 441, 511))
+        # Left part
+        LeftColumnLayout = QVBoxLayout()
 
-        self.ImporttabSampleGroupList = QTableWidget(self.SampleGroupConfig)
-        self.ImporttabSampleGroupList.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.ImporttabSampleGroupList.setObjectName(u"ImporttabSampleGroupList")
-        self.ImporttabSampleGroupList.setGeometry(QRect(10, 20, 191, 481))
-        font = self.ImporttabSampleGroupList.font()
-        font.setPointSize(17)
-        font.setBold(False)
-        self.ImporttabSampleGroupList.setFont(font)
-        self.ImporttabSampleGroupList.setColumnCount(3)
-        self.ImporttabSampleGroupList.setColumnWidth(0, 190)
-        if not DEV:
-            self.ImporttabSampleGroupList.hideColumn(1)
-            self.ImporttabSampleGroupList.hideColumn(2)
-        self.ImporttabSampleGroupList.verticalHeader().setVisible(False)
-        self.ImporttabSampleGroupList.horizontalHeader().setVisible(False)
-        self.ImporttabSampleGroupList.setSelectionBehavior(QTableWidget.SelectRows)
-        self.ImporttabSampleGroupList.setSelectionMode(QTableWidget.SingleSelection)
-        self.ImporttabSampleGroupList.clicked.connect(self.UpdateImportTabSGroupContentPreview)
-
-        self.AddSampleGroupBox = QGroupBox(self.SampleGroupConfig)
-        self.AddSampleGroupBox.setObjectName(u"AddSampleGroupBox")
-        self.AddSampleGroupBox.setGeometry(QRect(210, 10, 221, 51))
-
-        self.AddSampleGroupNameEdit = QLineEdit(self.AddSampleGroupBox)
-        self.AddSampleGroupNameEdit.setObjectName(u"AddSampleGroupNameEdit")
-        self.AddSampleGroupNameEdit.setGeometry(QRect(10, 20, 171, 22))
-
-        self.AddSampleGroupconfirm = QPushButton(self.AddSampleGroupBox)
-        self.AddSampleGroupconfirm.setObjectName(u"AddSampleGroupconfirm")
-        self.AddSampleGroupconfirm.setGeometry(QRect(190, 20, 21, 24))
-        self.AddSampleGroupconfirm.clicked.connect(self.AddNewSGroup)
-
-        self.RenameSampleGroupBox = QGroupBox(self.SampleGroupConfig)
-        self.RenameSampleGroupBox.setObjectName(u"RenameSampleGroupBox")
-        self.RenameSampleGroupBox.setGeometry(QRect(210, 60, 221, 51))
-
-        self.RenameSampleGroupEdit = QLineEdit(self.RenameSampleGroupBox)
-        self.RenameSampleGroupEdit.setObjectName(u"RenameSampleGroupEdit")
-        self.RenameSampleGroupEdit.setGeometry(QRect(10, 20, 171, 22))
-
-        self.RenameSampleGroupConfig = QPushButton(self.RenameSampleGroupBox)
-        self.RenameSampleGroupConfig.setObjectName(u"RenameSampleGroupConfig")
-        self.RenameSampleGroupConfig.setGeometry(QRect(190, 20, 21, 24))
-        #self.RenameSampleGroupConfig.clicked.connect(self.rename_sample_group)
-
-        self.SampleGroupMove = QGroupBox(self.SampleGroupConfig)
-        self.SampleGroupMove.setObjectName(u"SampleGroupMove")
-        self.SampleGroupMove.setGeometry(QRect(240, 110, 71, 91))
-
-        self.SampleGroupMoveUp = QPushButton(self.SampleGroupMove)
-        self.SampleGroupMoveUp.setObjectName(u"SampleGroupMoveUp")
-        self.SampleGroupMoveUp.setGeometry(QRect(10, 20, 51, 24))
-        #self.SampleGroupMoveUp.clicked.connect(self.sgroupmoveup)
-
-        self.SampleGroupMoveDown = QPushButton(self.SampleGroupMove)
-        self.SampleGroupMoveDown.setObjectName(u"SampleGroupMoveDown")
-        self.SampleGroupMoveDown.setGeometry(QRect(10, 50, 51, 24))
-        #self.SampleGroupMoveDown.clicked.connect(self.sgroupmovedown)
-
-        self.SampleGroupEdit = QGroupBox(self.SampleGroupConfig)
-        self.SampleGroupEdit.setObjectName(u"SampleGroupEdit")
-        self.SampleGroupEdit.setGeometry(QRect(330, 110, 71, 91))
-
-        self.SampleGroupRemove = QPushButton(self.SampleGroupEdit)
-        self.SampleGroupRemove.setObjectName(u"SampleGroupRemove")
-        self.SampleGroupRemove.setGeometry(QRect(10, 20, 51, 24))
-        self.SampleGroupRemove.clicked.connect(self.RemoveSampleGroup)
-
-        self.SampleGroupClone = QPushButton(self.SampleGroupEdit)
-        self.SampleGroupClone.setObjectName(u"SampleGroupClone")
-        self.SampleGroupClone.setGeometry(QRect(10, 50, 51, 24))
-        self.SampleGroupClone.clicked.connect(self.CloneSampleGroup)
-
-        self.SampleGroupContentsPreview = QTableWidget(self.SampleGroupConfig)
-        self.SampleGroupContentsPreview.setObjectName(u"SampleGroupContentsPreview")
-        self.SampleGroupContentsPreview.setGeometry(QRect(210, 291, 221, 211))
-        self.SampleGroupContentsPreview.setColumnCount(1)
-        self.SampleGroupContentsPreview.setColumnWidth(0,221)
-        self.SampleGroupContentsPreview.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.SampleGroupContentsPreview.verticalHeader().setVisible(False)
-        self.SampleGroupContentsPreview.horizontalHeader().setVisible(False)
-
-        self.SampleGroupContentsLabel = QLabel(self.SampleGroupConfig)
-        self.SampleGroupContentsLabel.setObjectName(u"SampleGroupContentsLabel")
-        self.SampleGroupContentsLabel.setGeometry(QRect(210, 270, 49, 16))
-
-        self.AddAudioToSGroupButton = QPushButton(self.SampleGroupConfig)
-        self.AddAudioToSGroupButton.setObjectName(u"AddAudioToSGroup")
-        self.AddAudioToSGroupButton.setGeometry(QRect(210, 210, 221, 24))
-        self.AddAudioToSGroupButton.clicked.connect(self.AddAudioToSGroup)
-
-        self.RemoveAudioGromSGroup = QPushButton(self.SampleGroupConfig)
-        self.RemoveAudioGromSGroup.setObjectName(u"RemoveAudioGromSGroup")
-        self.RemoveAudioGromSGroup.setGeometry(QRect(210, 240, 221, 24))
-
+        # Audio Files Group
         self.AudioFilesListGroup = QGroupBox(self.Import)
         self.AudioFilesListGroup.setObjectName(u"AudioFilesListGroup")
-        self.AudioFilesListGroup.setGeometry(QRect(10, 160, 631, 371))
+        AudioFilesListGroupLayout = QVBoxLayout(self.AudioFilesListGroup)
 
         self.AudioFilesList = QTableWidget(self.AudioFilesListGroup)
         self.AudioFilesList.verticalHeader().setVisible(False)
         self.AudioFilesList.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.AudioFilesList.setObjectName(u"AudioFilesList")
-        self.AudioFilesList.setGeometry(QRect(10, 20, 611, 341))
         self.AudioFilesList.setColumnCount(7)
-        if not DEV:
-            self.AudioFilesList.hideColumn(6)
-        self.AudioFilesList.setSelectionBehavior(QTableWidget.SelectRows)
         self.AudioFilesList.setHorizontalHeaderLabels(("Name", "File", "Channels", "Sample Rate", "Bit Depth", "Lenght", "id"))
         AudioFilesTableWidths = ((0,80),(1,284),(2,55),(3,75),(4,55),(5,60),(6,30))
         for i in AudioFilesTableWidths:
             self.AudioFilesList.setColumnWidth(i[0],i[1])
-        
-        self.RemoveSelecteAudioButton = QPushButton(self.Import)
-        self.RemoveSelecteAudioButton.setObjectName(u"RemoveSelecteAudioButton")
-        self.RemoveSelecteAudioButton.setGeometry(QRect(510, 137, 130, 24))
-        self.RemoveSelecteAudioButton.clicked.connect(self.RemoveAudiofile)
+        self.AudioFilesList.setSelectionBehavior(QTableWidget.SelectRows)
+        AudioFilesListGroupLayout.addWidget(self.AudioFilesList)
 
+        self.RemoveSelecteAudioButton = QPushButton(self.AudioFilesListGroup)
+        self.RemoveSelecteAudioButton.setObjectName(u"RemoveSelecteAudioButton")
+        self.RemoveSelecteAudioButton.setText("Remove Audio")
+        self.RemoveSelecteAudioButton.clicked.connect(self.RemoveAudiofile)
+        AudioFilesListGroupLayout.addWidget(self.RemoveSelecteAudioButton)
+
+        self.AudioFilesListGroup.setLayout(AudioFilesListGroupLayout)
+        
+
+        # Import Recording Group
         self.ImportRecordingGroupBox = QGroupBox(self.Import)
         self.ImportRecordingGroupBox.setObjectName(u"ImportRecordingGroupBox")
-        self.ImportRecordingGroupBox.setGeometry(QRect(10, 20, 491, 141))
+        ImportRecordingLayout = QVBoxLayout(self.ImportRecordingGroupBox)
 
-        self.ImportRecordingButton = QPushButton(self.ImportRecordingGroupBox)
-        self.ImportRecordingButton.setObjectName(u"ImportRecordingButton")
-        self.ImportRecordingButton.setGeometry(QRect(10, 110, 101, 24))
-        self.ImportRecordingButton.clicked.connect(self.ValidateAudioImport)
-
-        self.ImportRecordingName = QLineEdit(self.ImportRecordingGroupBox)
-        self.ImportRecordingName.setObjectName(u"ImportRecordingName")
-        self.ImportRecordingName.setGeometry(QRect(10, 80, 271, 22))
-        
-        self.NameInprojectLabel = QLabel(self.ImportRecordingGroupBox)
-        self.NameInprojectLabel.setObjectName(u"NameInprojectLabel")
-        self.NameInprojectLabel.setGeometry(QRect(10, 60, 91, 16))
-
-        self.ImportRecordingDataPath = QLineEdit(self.ImportRecordingGroupBox)
-        self.ImportRecordingDataPath.setObjectName(u"ImportRecordingDataPath")
-        self.ImportRecordingDataPath.setGeometry(QRect(80, 30, 401, 22))
+        SelectFileLayout = QHBoxLayout()
+        ImportRecordingLayout.addLayout(SelectFileLayout)
 
         self.ImportRecordingSelectFileButton = QPushButton(self.ImportRecordingGroupBox)
         self.ImportRecordingSelectFileButton.setObjectName(u"ImportRecordingSelectFileButton")
-        self.ImportRecordingSelectFileButton.setGeometry(QRect(10, 30, 61, 24))
+        self.ImportRecordingSelectFileButton.setText("Select File")
         self.ImportRecordingSelectFileButton.clicked.connect(self.ImportAudioFile)
+        SelectFileLayout.addWidget(self.ImportRecordingSelectFileButton)
+
+        self.ImportRecordingDataPath = QLineEdit(self.ImportRecordingGroupBox)
+        self.ImportRecordingDataPath.setObjectName(u"ImportRecordingDataPath")
+        SelectFileLayout.addWidget(self.ImportRecordingDataPath)
+
+        RecordingNameLayout = QHBoxLayout()
+        ImportRecordingLayout.addLayout(RecordingNameLayout)
+
+        self.NameInprojectLabel = QLabel(self.ImportRecordingGroupBox)
+        self.NameInprojectLabel.setObjectName(u"NameInprojectLabel")
+        self.NameInprojectLabel.setText("Name in project")
+        RecordingNameLayout.addWidget(self.NameInprojectLabel)
+
+        self.ImportRecordingName = QLineEdit(self.ImportRecordingGroupBox)
+        self.ImportRecordingName.setObjectName(u"ImportRecordingName")
+        RecordingNameLayout.addWidget(self.ImportRecordingName)
+
+        self.ImportRecordingButton = QPushButton(self.ImportRecordingGroupBox)
+        self.ImportRecordingButton.setObjectName(u"ImportRecordingButton")
+        self.ImportRecordingButton.setText("Import")
+        self.ImportRecordingButton.clicked.connect(self.ValidateAudioImport)
+        ImportRecordingLayout.addWidget(self.ImportRecordingButton)
+
+        self.ImportRecordingGroupBox.setLayout(ImportRecordingLayout)
+        LeftColumnLayout.addWidget(self.ImportRecordingGroupBox)
+        LeftColumnLayout.addWidget(self.AudioFilesListGroup)
+
+        ImportLayout.addLayout(LeftColumnLayout, 2)
+
+        # Right part
+        self.SampleGroupConfig = QGroupBox(self.Import)
+        self.SampleGroupConfig.setObjectName(u"SampleGroupConfig")
+        SampleGroupConfigLayout = QVBoxLayout(self.SampleGroupConfig)
+
+        self.ImporttabSampleGroupList = QTableWidget(self.SampleGroupConfig)
+        self.ImporttabSampleGroupList.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.ImporttabSampleGroupList.setObjectName(u"ImporttabSampleGroupList")
+        self.ImporttabSampleGroupList.setColumnCount(3)
+        self.ImporttabSampleGroupList.setColumnWidth(0, 190)
+        self.ImporttabSampleGroupList.verticalHeader().setVisible(False)
+        self.ImporttabSampleGroupList.horizontalHeader().setVisible(False)
+        self.ImporttabSampleGroupList.setSelectionBehavior(QTableWidget.SelectRows)
+        self.ImporttabSampleGroupList.setSelectionMode(QTableWidget.SingleSelection)
+        self.ImporttabSampleGroupList.clicked.connect(self.UpdateImportTabSGroupContentPreview)
+        SampleGroupConfigLayout.addWidget(self.ImporttabSampleGroupList)
+
+        self.AddSampleGroupBox = QGroupBox(self.SampleGroupConfig)
+        self.AddSampleGroupBox.setObjectName(u"AddSampleGroupBox")
+        AddSampleGroupBoxLayout = QHBoxLayout(self.AddSampleGroupBox)
+        self.AddSampleGroupNameEdit = QLineEdit(self.AddSampleGroupBox)
+        self.AddSampleGroupNameEdit.setObjectName(u"AddSampleGroupNameEdit")
+        AddSampleGroupBoxLayout.addWidget(self.AddSampleGroupNameEdit)
+        self.AddSampleGroupconfirm = QPushButton(self.AddSampleGroupBox)
+        self.AddSampleGroupconfirm.setObjectName(u"AddSampleGroupconfirm")
+        self.AddSampleGroupconfirm.setText("+")
+        self.AddSampleGroupconfirm.clicked.connect(self.AddNewSGroup)
+        AddSampleGroupBoxLayout.addWidget(self.AddSampleGroupconfirm)
+        self.AddSampleGroupBox.setLayout(AddSampleGroupBoxLayout)
+        SampleGroupConfigLayout.addWidget(self.AddSampleGroupBox)
+
+        # self.RenameSampleGroupBox = QGroupBox(self.SampleGroupConfig)
+        # self.RenameSampleGroupBox.setObjectName(u"RenameSampleGroupBox")
+        # RenameSampleGroupBoxLayout = QHBoxLayout(self.RenameSampleGroupBox)
+        # self.RenameSampleGroupEdit = QLineEdit(self.RenameSampleGroupBox)
+        # self.RenameSampleGroupEdit.setObjectName(u"RenameSampleGroupEdit")
+        # RenameSampleGroupBoxLayout.addWidget(self.RenameSampleGroupEdit)
+        # self.RenameSampleGroupConfig = QPushButton(self.RenameSampleGroupBox)
+        # self.RenameSampleGroupConfig.setObjectName(u"RenameSampleGroupConfig")
+        # self.RenameSampleGroupConfig.setText(">");
+        # # self.RenameSampleGroupConfig.clicked.connect(self.rename_sample_group)
+        # RenameSampleGroupBoxLayout.addWidget(self.RenameSampleGroupConfig)
+        # self.RenameSampleGroupBox.setLayout(RenameSampleGroupBoxLayout)
+        # SampleGroupConfigLayout.addWidget(self.RenameSampleGroupBox)
+
+        self.SampleGroupEdit = QGroupBox(self.SampleGroupConfig)
+        self.SampleGroupEdit.setObjectName(u"SampleGroupEdit")
+        SampleGroupEditLayout = QHBoxLayout(self.SampleGroupEdit)
+        self.SampleGroupRemove = QPushButton(self.SampleGroupEdit)
+        self.SampleGroupRemove.setObjectName(u"SampleGroupRemove")
+        self.SampleGroupRemove.setText("Remove")
+        self.SampleGroupRemove.clicked.connect(self.RemoveSampleGroup)
+        SampleGroupEditLayout.addWidget(self.SampleGroupRemove)
+        self.SampleGroupClone = QPushButton(self.SampleGroupEdit)
+        self.SampleGroupClone.setObjectName(u"SampleGroupClone")
+        self.SampleGroupClone.setText("Clone")
+        self.SampleGroupClone.clicked.connect(self.CloneSampleGroup)
+        SampleGroupEditLayout.addWidget(self.SampleGroupClone)
+        self.SampleGroupEdit.setLayout(SampleGroupEditLayout)
+        SampleGroupConfigLayout.addWidget(self.SampleGroupEdit)
+
+        self.SampleGroupContentsLabel = QLabel(self.SampleGroupConfig)
+        self.SampleGroupContentsLabel.setObjectName(u"SampleGroupContentsLabel")
+        self.SampleGroupContentsLabel.setText("Contents")
+        SampleGroupConfigLayout.addWidget(self.SampleGroupContentsLabel)
+
+        self.SampleGroupContentsPreview = QTableWidget(self.SampleGroupConfig)
+        self.SampleGroupContentsPreview.setObjectName(u"SampleGroupContentsPreview")
+        self.SampleGroupContentsPreview.setColumnCount(1)
+        self.SampleGroupContentsPreview.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.SampleGroupContentsPreview.verticalHeader().setVisible(False)
+        self.SampleGroupContentsPreview.horizontalHeader().setVisible(False)
+        SampleGroupConfigLayout.addWidget(self.SampleGroupContentsPreview)
+
+        self.AddAudioToSGroupButton = QPushButton(self.SampleGroupConfig)
+        self.AddAudioToSGroupButton.setObjectName(u"AddAudioToSGroup")
+        self.AddAudioToSGroupButton.setText("Add audio to current group")
+        self.AddAudioToSGroupButton.clicked.connect(self.AddAudioToSGroup)
+        SampleGroupConfigLayout.addWidget(self.AddAudioToSGroupButton)
+
+        self.RemoveAudioGromSGroup = QPushButton(self.SampleGroupConfig)
+        self.RemoveAudioGromSGroup.setObjectName(u"RemoveAudioGromSGroup")
+        self.RemoveAudioGromSGroup.setText("Remove from current group")
+        SampleGroupConfigLayout.addWidget(self.RemoveAudioGromSGroup)
+
+        self.SampleGroupConfig.setLayout(SampleGroupConfigLayout)
+        ImportLayout.addWidget(self.SampleGroupConfig, 2)
 
         self.MainTabs.addTab(self.Import, "")
 
@@ -321,105 +329,145 @@ class Ui_MainWindow(object):
 
         self.Slice = QWidget()
         self.Slice.setObjectName(u"Slice")
+        SliceMainLayout = QVBoxLayout(self.Slice)
 
-        self.Sample_Cut_Data_Table = QTableWidget(self.Slice)
-        self.Sample_Cut_Data_Table.setObjectName(u"Sample_Cut_Data_Table")
-        Sample_Cut_Data_Table_length = 741
-        self.Sample_Cut_Data_Table.setGeometry(QRect(230, 90, Sample_Cut_Data_Table_length, 431))
-        Data_Table_Widths = ((0,30),(1,100),(2,100),(3,100))
-        self.Sample_Cut_Data_Table.setColumnCount(5)
-        self.Sample_Cut_Data_Table.setHorizontalHeaderLabels(("ID", "S. Start", "S. End", "Length", "Sample Groups"))
-        leftover = 0
-        for i in Data_Table_Widths:
-            self.Sample_Cut_Data_Table.setColumnWidth(i[0],i[1])
-            leftover += i[1]
+        # --- Top Controls (Sample Group selection, cutpoint, end, buttons) ---
+        TopControlsLayout = QHBoxLayout()
+
+        # Sample Group Selection and buttons (left)
+        SGroupsLayout = QVBoxLayout()
+        self.labelsamplegroups = QLabel(self.Slice)
+        self.labelsamplegroups.setObjectName(u"labelsamplegroups")
         
-        self.Sample_Cut_Data_Table.setColumnWidth(4,Sample_Cut_Data_Table_length-leftover-4)
-        self.Add_Sample_Cut_Data = QPushButton(self.Slice)
-        self.Add_Sample_Cut_Data.setObjectName(u"Add_Sample_Cut_Data")
-        self.Add_Sample_Cut_Data.setGeometry(QRect(530, 60, 61, 25))  # Adjusted y-coordinate to align with other widgets
-        self.Add_Sample_Cut_Data.clicked.connect(self.AddNewSlice)
 
-        self.SampleCutpointInput = ClipboardSpinBox(self.Slice, None) #paste_callback=self.paste_clipboard_to_cutpoint)
-        self.SampleCutpointInput.setObjectName(u"SampleCutpointInput")
-        self.SampleCutpointInput.setGeometry(QRect(230, 60, 131, 25))
-        self.SampleCutpointInput.setMinimum(0)
-        self.SampleCutpointInput.setMaximum(999999999)
-    
-        self.Remove_Sample_Cut_Data = QPushButton(self.Slice)
-        self.Remove_Sample_Cut_Data.setObjectName(u"Remove_Sample_Cut_Data")
-        self.Remove_Sample_Cut_Data.setGeometry(QRect(700, 60, 100, 25))  # Adjust position as needed
-        self.Remove_Sample_Cut_Data.setText("Remove Row")
-        #self.Remove_Sample_Cut_Data.clicked.connect(self.remove_sample_cut_data)
-  
-        self.SampleEndInput = ClipboardSpinBox(self.Slice, None) #paste_callback=self.paste_clipboard_to_endinput)
-        self.SampleEndInput.setObjectName(u"SampleEndInput")
-        self.SampleEndInput.setGeometry(QRect(370, 60, 131, 25))
-        self.SampleEndInput.setMaximum(999999999)
-  
-        self.IsLengthCheckbox = QCheckBox(self.Slice)
-        self.IsLengthCheckbox.setObjectName(u"IsLengthCheckbox")
-        self.IsLengthCheckbox.setGeometry(QRect(510, 60, 16, 22))
-        #self.IsLengthCheckbox.stateChanged.connect(self.update_lenght_label)
-    
         self.SampleGroupSelection = QTableWidget(self.Slice)
         self.SampleGroupSelection.setObjectName(u"SampleGroupSelection")
-        self.SampleGroupSelection.setGeometry(QRect(30, 90, 191, 431))
         self.SampleGroupSelection.setColumnCount(4)
-        if not DEV:
-            self.SampleGroupSelection.hideColumn(1)
-            self.SampleGroupSelection.hideColumn(2)
-            self.SampleGroupSelection.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # Disable horizontal scrollbar
         self.SampleGroupSelection.setColumnWidth(0, 138)
         self.SampleGroupSelection.setColumnWidth(1, 10)
         self.SampleGroupSelection.setColumnWidth(2, 10)
         self.SampleGroupSelection.setColumnWidth(3, 10)
         self.SampleGroupSelection.verticalHeader().setVisible(False)
         self.SampleGroupSelection.horizontalHeader().setVisible(False)
-        
         self.SampleGroupSelection.clicked.connect(self.UpdateSelectedSGroup)
+        
 
+        SGroupsButtonsLayout = QHBoxLayout()
         self.SliceGroupAllButton = QPushButton(self.Slice)
         self.SliceGroupAllButton.setObjectName(u"SliceGroupAllButton")
-        self.SliceGroupAllButton.setGeometry(QRect(120, 60, 51, 24))
+        self.SliceGroupAllButton.setText("All")
         self.SliceGroupAllButton.clicked.connect(self.SelectAllSampleGroups)
-       
+        
+
         self.SliceGroupClearButton = QPushButton(self.Slice)
         self.SliceGroupClearButton.setObjectName(u"SliceGroupClearButton")
-        self.SliceGroupClearButton.setGeometry(QRect(170, 60, 51, 24))
+        self.SliceGroupClearButton.setText("Clear")
         self.SliceGroupClearButton.clicked.connect(self.ClearAllSampleGroups)
-      
-        self.labelsamplegroups = QLabel(self.Slice)
-        self.labelsamplegroups.setObjectName(u"labelsamplegroups")
-        self.labelsamplegroups.setGeometry(QRect(30, 60, 91, 16))
-      
+        SGroupsButtonsLayout.addWidget(self.labelsamplegroups)
+        SGroupsButtonsLayout.addWidget(self.SliceGroupAllButton)
+        SGroupsButtonsLayout.addWidget(self.SliceGroupClearButton)
+        
+        SGroupsLayout.addLayout(SGroupsButtonsLayout)
+        SGroupsLayout.addWidget(self.SampleGroupSelection)
+
+        TopControlsLayout.addLayout(SGroupsLayout, 1)
+
+        # Sample Cut Controls (center)
+        CutControlsLayout = QVBoxLayout()
+        CutInputsLayout = QHBoxLayout()
+
         self.labelsamplestart = QLabel(self.Slice)
-        self.labelsamplestart.setObjectName(u"label_2")
-        self.labelsamplestart.setGeometry(QRect(230, 40, 131, 16))
-       
+        self.labelsamplestart.setObjectName(u"labelsamplestart")
+        self.labelsamplestart.setText("Sample Start")
+        CutInputsLayout.addWidget(self.labelsamplestart)
+
+        self.SampleCutpointInput = ClipboardSpinBox(self.Slice, None)
+        self.SampleCutpointInput.setObjectName(u"SampleCutpointInput")
+        self.SampleCutpointInput.setMinimum(0)
+        self.SampleCutpointInput.setMaximum(999999999)
+        CutInputsLayout.addWidget(self.SampleCutpointInput)
+
         self.labelsampleend = QLabel(self.Slice)
-        self.labelsampleend.setObjectName(u"label_3")
-        self.labelsampleend.setGeometry(QRect(370, 40, 131, 16))
-      
+        self.labelsampleend.setObjectName(u"labelsampleend")
+        self.labelsampleend.setText("Sample End")
+        CutInputsLayout.addWidget(self.labelsampleend)
+
+        self.SampleEndInput = ClipboardSpinBox(self.Slice, None)
+        self.SampleEndInput.setObjectName(u"SampleEndInput")
+        self.SampleEndInput.setMaximum(999999999)
+        CutInputsLayout.addWidget(self.SampleEndInput)
+
+        self.IsLengthCheckbox = QCheckBox(self.Slice)
+        self.IsLengthCheckbox.setObjectName(u"IsLengthCheckbox")
+        self.IsLengthCheckbox.setText("Len")
+        CutInputsLayout.addWidget(self.IsLengthCheckbox)
+
+        CutControlsLayout.addLayout(CutInputsLayout)
+
+        # Add/Remove Buttons (below inputs)
+        CutButtonsLayout = QHBoxLayout()
+        self.Add_Sample_Cut_Data = QPushButton(self.Slice)
+        self.Add_Sample_Cut_Data.setObjectName(u"Add_Sample_Cut_Data")
+        self.Add_Sample_Cut_Data.setText("+")
+        self.Add_Sample_Cut_Data.clicked.connect(self.AddNewSlice)
+        CutInputsLayout.addWidget(self.Add_Sample_Cut_Data)
+
+        self.Remove_Sample_Cut_Data = QPushButton(self.Slice)
+        self.Remove_Sample_Cut_Data.setObjectName(u"Remove_Sample_Cut_Data")
+        self.Remove_Sample_Cut_Data.setText("Remove Row")
+        CutInputsLayout.addWidget(self.Remove_Sample_Cut_Data)
+
         self.AutoClipboardCheckbox = QCheckBox(self.Slice)
         self.AutoClipboardCheckbox.setObjectName(u"AutoClipboardCheckbox")
-        self.AutoClipboardCheckbox.setGeometry(QRect(600, 60, 150, 25))
         self.AutoClipboardCheckbox.setText("Auto Clipboard")
-       
+        CutInputsLayout.addWidget(self.AutoClipboardCheckbox)
+
+        CutControlsLayout.addLayout(CutButtonsLayout)
+        TopControlsLayout.addLayout(CutControlsLayout, 2)
+
+        # Wrap TopControlsLayout
+        TopControlsWidget = QWidget(self.Slice)
+        TopControlsWidget.setLayout(TopControlsLayout)
+        TopControlsWidget.setFixedHeight(180)  #
+
+        SliceMainLayout.addWidget(TopControlsWidget)
+
+        # --- Sample Cut Data Table 
+        self.Sample_Cut_Data_Table = QTableWidget(self.Slice)
+        self.Sample_Cut_Data_Table.setObjectName(u"Sample_Cut_Data_Table")
+        self.Sample_Cut_Data_Table.setColumnCount(5)
+        self.Sample_Cut_Data_Table.setHorizontalHeaderLabels(("ID", "S. Start", "S. End", "Length", "Sample Groups"))
+        self.Sample_Cut_Data_Table.verticalHeader().setVisible(False)
+        self.Sample_Cut_Data_Table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.Sample_Cut_Data_Table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        SliceMainLayout.addWidget(self.Sample_Cut_Data_Table)
+
+        self.Slice.setLayout(SliceMainLayout)
         self.MainTabs.addTab(self.Slice, "")
 
                                                               #    SORT TAB    
  
         self.Sort = QWidget()
-        self.Sort.setObjectName(u"sort")
+        self.Sort.setObjectName(u"Sort")
+        SortMainLayout = QVBoxLayout(self.Sort)
+
+        # --- Top Row: SGroup Filter and Slices List (left), Audio Preview + Configs (center) ---
+        TopRowLayout = QHBoxLayout()
+
+        # SGroup Filter (left)
+        SGroupFilterLayout = QVBoxLayout()
+        self.SortTabSGroupfilter = QComboBox(self.Sort)
+        self.SortTabSGroupfilter.addItem("SGroup Filter")
+        self.SortTabSGroupfilter.setObjectName(u"SortTabSGroupfilter")
+        self.SortTabSGroupfilter.currentIndexChanged.connect(self.SortTabSliceListUpdate)
+        SGroupFilterLayout.addWidget(self.SortTabSGroupfilter)
 
         self.SortGroupSlices = QGroupBox(self.Sort)
         self.SortGroupSlices.setObjectName(u"SortGroupSlices")
-        self.SortGroupSlices.setGeometry(QRect(10, 40, 201, 491))
-     
+        SortGroupSlicesLayout = QVBoxLayout(self.SortGroupSlices)
+
         self.SortTabSliceList = QTableWidget(self.SortGroupSlices)
         self.SortTabSliceList.setObjectName(u"SortTabSliceList")
-        self.SortTabSliceList.setGeometry(QRect(10, 20, 181, 461))
         self.SortTabSliceList.setColumnCount(4)
         self.SortTabSliceList.setColumnWidth(0, 40)
         self.SortTabSliceList.setColumnWidth(1, 60)
@@ -435,150 +483,158 @@ class Ui_MainWindow(object):
             self.SortTabSliceList.hideColumn(3)
         #self.SortTabSliceList.itemSelectionChanged.connect(self.update_waveform_preview)
         self.SortTabSliceList.itemSelectionChanged.connect(self.SortTabAudioAnalysisUpdate)
-    
-        self.SortTabSGroupfilter = QComboBox(self.Sort)
-        self.SortTabSGroupfilter.addItem("")
-        self.SortTabSGroupfilter.setObjectName(u"SortTabSGroupfilter")
-        self.SortTabSGroupfilter.setGeometry(QRect(10, 10, 201, 24))
-        self.SortTabSGroupfilter.currentIndexChanged.connect(self.SortTabSliceListUpdate)
-        #self.SortTabSGroupfilter.currentIndexChanged.connect(self.update_sort_preview_audio_select)
-     
+        SortGroupSlicesLayout.addWidget(self.SortTabSliceList)
+        self.SortGroupSlices.setLayout(SortGroupSlicesLayout)
+        SGroupFilterLayout.addWidget(self.SortGroupSlices)
+        TopRowLayout.addLayout(SGroupFilterLayout, 1)
+
+        # --- Center: Audio Preview + Configs (vertical) ---
+        CenterLayout = QVBoxLayout()
+
+        # Audio Preview
         self.SortAudioPreview = QGroupBox(self.Sort)
         self.SortAudioPreview.setObjectName(u"SortAudioPreview")
-        self.SortAudioPreview.setGeometry(QRect(220, 10, 551, 251))
-     
+        SortAudioPreviewLayout = QVBoxLayout(self.SortAudioPreview)
+
         self.AudioPreviewContainer = QWidget(self.SortAudioPreview)
-        self.AudioPreviewContainer.setGeometry(QRect(10, 20, 531, 161))
-        self.AudioPreviewContainer.setObjectName(u"AudioPreviewContainer")
-
+        AudioPreviewContainerLayout = QVBoxLayout(self.AudioPreviewContainer)
         self.WaveformVisu = pg.PlotWidget(self.AudioPreviewContainer)
-        self.WaveformVisu.setGeometry(QRect(0, 0, 531, 161))
         self.WaveformVisu.setObjectName(u"AudioPreviewPlaceholder")
-        self.WaveformVisu.setBackground("lightgray")  # Set background color
-        self.WaveformVisu.showGrid(x=False, y=False)  # Hide grid
-        self.WaveformVisu.getPlotItem().hideAxis("bottom")  # Hide x-axis
-        self.WaveformVisu.getPlotItem().hideAxis("left")  # Hide y-axis
-        self.WaveformVisu.getPlotItem().setMenuEnabled(False)  # Disable context menu
-        self.WaveformVisu.getPlotItem().setLimits(yMin=-1, yMax=1)  # Limit y-axis to -1 to +1
-        self.WaveformVisu.setMouseEnabled(x=True, y=False)      # Disable vertical drag
-        self.WaveformVisu.plotItem.setMenuEnabled(False)        # Hide context menu
-        self.WaveformVisu.plotItem.setMouseEnabled(y=False)     # Ensure vertical zoom/drag is off
-        #self.AudioPreviewPlaceholder.sigRangeChanged.connect(self.on_waveform_range_changed)
+        self.WaveformVisu.setBackground("lightgray")
+        self.WaveformVisu.showGrid(x=False, y=False)
+        self.WaveformVisu.getPlotItem().hideAxis("bottom")
+        self.WaveformVisu.getPlotItem().hideAxis("left")
+        self.WaveformVisu.getPlotItem().setMenuEnabled(False)
+        self.WaveformVisu.getPlotItem().setLimits(yMin=-1, yMax=1)
+        self.WaveformVisu.setMouseEnabled(x=True, y=False)
+        self.WaveformVisu.plotItem.setMenuEnabled(False)
+        self.WaveformVisu.plotItem.setMouseEnabled(y=False)
+        AudioPreviewContainerLayout.addWidget(self.WaveformVisu)
+        self.AudioPreviewContainer.setLayout(AudioPreviewContainerLayout)
+        SortAudioPreviewLayout.addWidget(self.AudioPreviewContainer)
 
+        # Controls under waveform
+        AudioPreviewControlsLayout = QHBoxLayout()
         self.SortPreviewPlayButton = QPushButton(self.SortAudioPreview)
         self.SortPreviewPlayButton.setObjectName(u"SortPreviewPlayButton")
-        self.SortPreviewPlayButton.setGeometry(QRect(10, 190, 71, 24))
-        #self.SortPreviewPlayButton.clicked.connect(self.play_audio_sample)
+        self.SortPreviewPlayButton.setText("Play")
+        AudioPreviewControlsLayout.addWidget(self.SortPreviewPlayButton)
 
         self.SortPreviewStopButton = QPushButton(self.SortAudioPreview)
         self.SortPreviewStopButton.setObjectName(u"SortPreviewStopButton")
-        self.SortPreviewStopButton.setGeometry(QRect(10, 220, 71, 24))
-        #self.SortPreviewStopButton.clicked.connect(self.stop_audio_sample)
-   
+        self.SortPreviewStopButton.setText("Stop")
+        AudioPreviewControlsLayout.addWidget(self.SortPreviewStopButton)
+
+        self.LabelPlaybackVolume = QLabel(self.SortAudioPreview)
+        self.LabelPlaybackVolume.setObjectName(u"LabelPlaybackVolume")
+        self.LabelPlaybackVolume.setText("Playback Volume")
+        AudioPreviewControlsLayout.addWidget(self.LabelPlaybackVolume)
+
         self.SortPreviewVolume = QSlider(self.SortAudioPreview)
         self.SortPreviewVolume.setObjectName(u"SortPreviewVolume")
-        self.SortPreviewVolume.setGeometry(QRect(90, 210, 160, 20))
         self.SortPreviewVolume.setOrientation(Qt.Orientation.Horizontal)
         self.SortPreviewVolume.setMaximum(10000)
         self.SortPreviewVolume.setSingleStep(1)
         self.SortPreviewVolume.setMinimum(0)
         self.SortPreviewVolume.setValue(10000)
-   
+        AudioPreviewControlsLayout.addWidget(self.SortPreviewVolume)
+
         self.SortPreviewAudioSelect = QComboBox(self.SortAudioPreview)
         self.SortPreviewAudioSelect.setObjectName(u"SortPreviewAudioSelect")
-        self.SortPreviewAudioSelect.setGeometry(QRect(381, 190, 161, 24))
         self.SortPreviewAudioSelect.currentIndexChanged.connect(self.AudioWaveformUpdate)
-     
-        self.LabelPlaybackVolume = QLabel(self.SortAudioPreview)
-        self.LabelPlaybackVolume.setObjectName(u"LabelPlaybackVolume")
-        self.LabelPlaybackVolume.setGeometry(QRect(90, 190, 161, 20))
-     
+        AudioPreviewControlsLayout.addWidget(self.SortPreviewAudioSelect)
+
+        SortAudioPreviewLayout.addLayout(AudioPreviewControlsLayout)
+
+        # Frequency/Note labels
+        FreqNoteLayout = QHBoxLayout()
+        self.FrequencyLabel = QLabel(self.SortAudioPreview)
+        self.FrequencyLabel.setObjectName(u"FrequencyLabel")
+        self.FrequencyLabel.setText("Frequency: N/A")
+        FreqNoteLayout.addWidget(self.FrequencyLabel)
+        self.NoteLabel = QLabel(self.SortAudioPreview)
+        self.NoteLabel.setObjectName(u"NoteLabel")
+        self.NoteLabel.setText("Note: N/A")
+        FreqNoteLayout.addWidget(self.NoteLabel)
+        SortAudioPreviewLayout.addLayout(FreqNoteLayout)
+
+        self.SortAudioPreview.setLayout(SortAudioPreviewLayout)
+        CenterLayout.addWidget(self.SortAudioPreview)
+
+        # --- Add Sort Setup and Note Config under the waveform preview ---
         self.SortSetup = QGroupBox(self.Sort)
         self.SortSetup.setObjectName(u"SortSetup")
-        self.SortSetup.setGeometry(QRect(780, 10, 431, 251))
-     
-        self.SortSetupRRSelection = QSpinBox(self.SortSetup)
-        self.SortSetupRRSelection.setObjectName(u"SortSetupRRSelection")
-        self.SortSetupRRSelection.setGeometry(QRect(10, 40, 111, 21))
+        SortSetupLayout = QVBoxLayout(self.SortSetup)
         self.LabelSortRRSelection = QLabel(self.SortSetup)
         self.LabelSortRRSelection.setObjectName(u"LabelSortRRSelection")
-        self.LabelSortRRSelection.setGeometry(QRect(10, 20, 81, 16))
+        self.LabelSortRRSelection.setText("Round Robins")
+        SortSetupLayout.addWidget(self.LabelSortRRSelection)
+        self.SortSetupRRSelection = QSpinBox(self.SortSetup)
+        self.SortSetupRRSelection.setObjectName(u"SortSetupRRSelection")
+        self.SortSetupRRSelection.setMinimum(1)
+        self.SortSetupRRSelection.setMaximum(10)
+        SortSetupLayout.addWidget(self.SortSetupRRSelection)
+        self.SortSetup.setLayout(SortSetupLayout)
+        CenterLayout.addWidget(self.SortSetup)
 
         self.SortNoteConfig = QGroupBox(self.Sort)
         self.SortNoteConfig.setObjectName(u"SortNoteConfig")
-        self.SortNoteConfig.setGeometry(QRect(220, 270, 551, 120))  # Positioned under Audio Preview
         self.SortNoteConfig.setTitle("Note Configuration")
+        SortNoteConfigLayout = QVBoxLayout(self.SortNoteConfig)
 
-        # Octave Selection
+        NoteConfigRow = QHBoxLayout()
         self.OctaveLabel = QLabel(self.SortNoteConfig)
         self.OctaveLabel.setObjectName(u"OctaveLabel")
-        self.OctaveLabel.setGeometry(QRect(10, 30, 60, 20))
         self.OctaveLabel.setText("Octave:")
-
+        NoteConfigRow.addWidget(self.OctaveLabel)
         self.OctaveSelect = QSpinBox(self.SortNoteConfig)
         self.OctaveSelect.setObjectName(u"OctaveSelect")
-        self.OctaveSelect.setGeometry(QRect(70, 30, 60, 22))
         self.OctaveSelect.setMinimum(0)
         self.OctaveSelect.setMaximum(10)
-        self.OctaveSelect.setValue(4)  # Default value
-
-        # Note Selection
-        self.NoteLabel = QLabel(self.SortNoteConfig)
-        self.NoteLabel.setObjectName(u"NoteLabel")
-        self.NoteLabel.setGeometry(QRect(150, 30, 60, 20))
-        self.NoteLabel.setText("Note:")
-
+        self.OctaveSelect.setValue(4)
+        NoteConfigRow.addWidget(self.OctaveSelect)
+        self.NoteLabelConfig = QLabel(self.SortNoteConfig)
+        self.NoteLabelConfig.setObjectName(u"NoteLabelConfig")
+        self.NoteLabelConfig.setText("Note:")
+        NoteConfigRow.addWidget(self.NoteLabelConfig)
         self.NoteSelect = QComboBox(self.SortNoteConfig)
         self.NoteSelect.setObjectName(u"NoteSelect")
-        self.NoteSelect.setGeometry(QRect(200, 30, 100, 22))
         self.NoteSelect.addItems(["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"])
-
-        # Round Robin Selection
+        NoteConfigRow.addWidget(self.NoteSelect)
         self.RRLabel = QLabel(self.SortNoteConfig)
         self.RRLabel.setObjectName(u"RRLabel")
-        self.RRLabel.setGeometry(QRect(320, 30, 100, 20))
         self.RRLabel.setText("Round Robin:")
-
+        NoteConfigRow.addWidget(self.RRLabel)
         self.RRSelect = QSpinBox(self.SortNoteConfig)
         self.RRSelect.setObjectName(u"RRSelect")
-        self.RRSelect.setGeometry(QRect(400, 30, 60, 22))
         self.RRSelect.setMinimum(1)
         self.RRSelect.setMaximum(10)
-        self.RRSelect.setValue(1)  # Default value
+        self.RRSelect.setValue(1)
+        NoteConfigRow.addWidget(self.RRSelect)
+        SortNoteConfigLayout.addLayout(NoteConfigRow)
 
-        # Accept Button
+        NoteConfigButtonsLayout = QHBoxLayout()
         self.AcceptButton = QPushButton(self.SortNoteConfig)
         self.AcceptButton.setObjectName(u"AcceptButton")
-        self.AcceptButton.setGeometry(QRect(10, 70, 120, 24))
         self.AcceptButton.setText("Accept")
-        #self.AcceptButton.clicked.connect(self.accept_note_config)
-
-        # Accept+Next Button
+        NoteConfigButtonsLayout.addWidget(self.AcceptButton)
         self.AcceptNextButton = QPushButton(self.SortNoteConfig)
         self.AcceptNextButton.setObjectName(u"AcceptNextButton")
-        self.AcceptNextButton.setGeometry(QRect(140, 70, 120, 24))
         self.AcceptNextButton.setText("Accept+Next")
-        #self.AcceptNextButton.clicked.connect(self.accept_note_config_and_next)
-
-        # Frequency Label
-        self.FrequencyLabel = QLabel(self.SortAudioPreview)
-        self.FrequencyLabel.setObjectName(u"FrequencyLabel")
-        self.FrequencyLabel.setGeometry(QRect(10, 160, 200, 20))  # Adjust position as needed
-        self.FrequencyLabel.setText("Frequency: N/A")
-
-        # Note Label
-        self.NoteLabel = QLabel(self.SortAudioPreview)
-        self.NoteLabel.setObjectName(u"NoteLabel")
-        self.NoteLabel.setGeometry(QRect(220, 160, 200, 20))  # Adjust position as needed
-        self.NoteLabel.setText("Note: N/A")
-
-        # Detect Transient Button
+        NoteConfigButtonsLayout.addWidget(self.AcceptNextButton)
         self.DetectTransientButton = QPushButton(self.SortNoteConfig)
         self.DetectTransientButton.setObjectName(u"DetectTransientButton")
-        self.DetectTransientButton.setGeometry(QRect(270, 70, 120, 24))  # Adjust position as needed
         self.DetectTransientButton.setText("Detect Transient")
-        #self.DetectTransientButton.clicked.connect(self.detect_and_plot_transient)
+        NoteConfigButtonsLayout.addWidget(self.DetectTransientButton)
+        SortNoteConfigLayout.addLayout(NoteConfigButtonsLayout)
 
+        self.SortNoteConfig.setLayout(SortNoteConfigLayout)
+        CenterLayout.addWidget(self.SortNoteConfig)
+
+        TopRowLayout.addLayout(CenterLayout, 2)
+
+        SortMainLayout.addLayout(TopRowLayout)
+        self.Sort.setLayout(SortMainLayout)
         self.MainTabs.addTab(self.Sort, "")
 
                                                             #   EXPORT TAB 
@@ -634,12 +690,12 @@ class Ui_MainWindow(object):
         self.AddSampleGroupBox.setTitle(QCoreApplication.translate("MainWindow", u"Add SGroup", None))
         self.AddSampleGroupNameEdit.setText("")
         self.AddSampleGroupconfirm.setText(QCoreApplication.translate("MainWindow", u"+", None))
-        self.RenameSampleGroupBox.setTitle(QCoreApplication.translate("MainWindow", u"Rename Sgroup", None))
-        self.RenameSampleGroupEdit.setText("")
-        self.RenameSampleGroupConfig.setText(QCoreApplication.translate("MainWindow", u">", None))
-        self.SampleGroupMove.setTitle(QCoreApplication.translate("MainWindow", u"Move", None))
-        self.SampleGroupMoveUp.setText(QCoreApplication.translate("MainWindow", u"Up", None))
-        self.SampleGroupMoveDown.setText(QCoreApplication.translate("MainWindow", u"Down", None))
+        # self.RenameSampleGroupBox.setTitle(QCoreApplication.translate("MainWindow", u"Rename Sgroup", None))
+        # self.RenameSampleGroupEdit.setText("")
+        # self.RenameSampleGroupConfig.setText(QCoreApplication.translate("MainWindow", u">", None))
+        # self.SampleGroupMove.setTitle(QCoreApplication.translate("MainWindow", u"Move", None))
+        # self.SampleGroupMoveUp.setText(QCoreApplication.translate("MainWindow", u"Up", None))
+        # self.SampleGroupMoveDown.setText(QCoreApplication.translate("MainWindow", u"Down", None))
         self.SampleGroupEdit.setTitle(QCoreApplication.translate("MainWindow", u"Edit", None))
         self.SampleGroupRemove.setText(QCoreApplication.translate("MainWindow", u"Remove", None))
         self.SampleGroupClone.setText(QCoreApplication.translate("MainWindow", u"Clone", None))
@@ -658,12 +714,12 @@ class Ui_MainWindow(object):
         self.AddSampleGroupBox.setTitle(QCoreApplication.translate("MainWindow", u"Add SGroup", None))
         self.AddSampleGroupNameEdit.setText("")
         self.AddSampleGroupconfirm.setText(QCoreApplication.translate("MainWindow", u"+", None))
-        self.RenameSampleGroupBox.setTitle(QCoreApplication.translate("MainWindow", u"Rename Sgroup", None))
-        self.RenameSampleGroupEdit.setText("")
-        self.RenameSampleGroupConfig.setText(QCoreApplication.translate("MainWindow", u">", None))
-        self.SampleGroupMove.setTitle(QCoreApplication.translate("MainWindow", u"Move", None))
-        self.SampleGroupMoveUp.setText(QCoreApplication.translate("MainWindow", u"Up", None))
-        self.SampleGroupMoveDown.setText(QCoreApplication.translate("MainWindow", u"Down", None))
+        # self.RenameSampleGroupBox.setTitle(QCoreApplication.translate("MainWindow", u"Rename Sgroup", None))
+        # self.RenameSampleGroupEdit.setText("")
+        # self.RenameSampleGroupConfig.setText(QCoreApplication.translate("MainWindow", u">", None))
+        # self.SampleGroupMove.setTitle(QCoreApplication.translate("MainWindow", u"Move", None))
+        # self.SampleGroupMoveUp.setText(QCoreApplication.translate("MainWindow", u"Up", None))
+        # self.SampleGroupMoveDown.setText(QCoreApplication.translate("MainWindow", u"Down", None))
         self.SampleGroupEdit.setTitle(QCoreApplication.translate("MainWindow", u"Edit", None))
         self.SampleGroupRemove.setText(QCoreApplication.translate("MainWindow", u"Remove", None))
         self.SampleGroupClone.setText(QCoreApplication.translate("MainWindow", u"Clone", None))
@@ -1217,18 +1273,19 @@ class Ui_MainWindow(object):
         """
         Plot the waveform of the audio data.
         """
-        if audio_data is None:
+        data = audio_data
+        if data is None:
             print("No audio data to plot.")
             return
 
-        audio_data = audio_data.tolist()
+        #audio_data = audio_data.tolist()
 
         start_time = 0
-        end_time = len(audio_data)
+        end_time = len(data)
 
 
         try:
-            samples = audio_data
+            samples = data
             self.WaveformVisu.clear()  
 
             self.WaveformVisu.setXRange(start_time, end_time, padding=0)
@@ -1418,6 +1475,74 @@ class Ui_MainWindow(object):
         for audio_file in to_cache:
             self.CacheAudioFile(audio_file)  
 
+    def convert_to_int16(self, raw_data, bits_per_sample, sample_format='WAVE_FORMAT_PCM'):
+        """
+        Convert raw audio bytes of any supported bit depth/format to 16-bit PCM.
+
+        Args:
+            raw_data (bytes): The raw audio byte stream.
+            bits_per_sample (int): Bit depth of the input data (8, 16, 24, 32, 64).
+            sample_format (str): 'WAVE_FORMAT_PCM' or 'WAVE_FORMAT_IEEE_FLOAT'.
+
+        Returns:
+            np.ndarray: 16-bit integer numpy array.
+        """
+        if sample_format == 'WAVE_FORMAT_IEEE_FLOAT':
+            # FLOAT input: determine dtype
+            if bits_per_sample == 32:
+                dtype = np.float32
+            elif bits_per_sample == 64:
+                dtype = np.float64
+            else:
+                raise ValueError("Unsupported float bit depth")
+
+            float_data = np.frombuffer(raw_data, dtype=dtype)
+            float_data = np.clip(float_data, -1.0, 1.0)  # clip to avoid overflow
+            return (float_data * 32767).astype(np.int16)
+
+        elif sample_format == 'WAVE_FORMAT_PCM':
+            if bits_per_sample == 8:
+                # Unsigned 8-bit PCM
+                data = np.frombuffer(raw_data, dtype=np.uint8)
+                return ((data.astype(np.int16) - 128) << 8)  # Center and scale
+            elif bits_per_sample == 16:
+                return np.frombuffer(raw_data, dtype=np.int16)
+            elif bits_per_sample == 24:
+                # 24-bit PCM is unpacked manually
+                samples = np.frombuffer(raw_data, dtype=np.uint8)
+                samples = samples.reshape(-1, 3)
+                # Combine bytes (little endian): pad with sign byte
+                int32 = (samples[:, 0].astype(np.int32) |
+                        (samples[:, 1].astype(np.int32) << 8) |
+                        (samples[:, 2].astype(np.int32) << 16))
+                # Sign extension for 24-bit
+                int32 = np.where(int32 & 0x800000, int32 | ~0xFFFFFF, int32)
+                return (int32 >> 8).astype(np.int16)
+            elif bits_per_sample == 32:
+                # Convert 32-bit int to 16-bit
+                data = np.frombuffer(raw_data, dtype=np.int32)
+                return (data >> 16).astype(np.int16)
+            else:
+                raise ValueError("Unsupported PCM bit depth")
+        else:
+            raise ValueError(f"Unsupported sample format: must be 'PCM' or 'FLOAT': {sample_format}")
+
+    def int16_to_list(self, int16_array):
+        """
+        Convert a NumPy array of int16 samples to a regular Python list of ints.
+
+        Args:
+            int16_array (np.ndarray): Numpy array with dtype=int16.
+
+        Returns:
+            List[int]: A list of Python integers.
+        """
+        if int16_array.dtype != np.int16:
+            raise ValueError("Input array must have dtype int16")
+        
+        return int16_array.tolist()
+
+
     def CacheAudioFile(self, audio_file):
         """
         Cache audio data for the selected audio file.
@@ -1439,16 +1564,22 @@ class Ui_MainWindow(object):
             with PyWave.open(file_path, 'r') as wav_file:
 
                 # Read the audio data
-                audio_data = wav_file.read()
-                audio_data = np.frombuffer(audio_data, dtype=np.int16)
-                print(audio_data)
-
+                audio_data = wav_file.read_samples(wav_file.samples)
+                format = wav_file.format
+                if format == 1: format = "WAVE_FORMAT_PCM"
+                elif format == 2: format = "WAVE_FORMAT_IEEE_FLOAT"
+                else: format = "Unknown"
+                audio_data = self.convert_to_int16(audio_data, wav_file.bits_per_sample, format)
+                #audio_data = self.int16_to_list(audio_data)
+                #audio_data = np.frombuffer(audio_data, dtype=np.int16)
+                
         except Exception as e:
             print(f"Error loading audio file: {e}")
             return
 
         # Cache the audio data
         self.CACHEDAUDIOFILES.append((audio_file.name, audio_data))
+        audio_data = None  # Clear the variable to free memory
         print(f"Audio file {audio_file.name} cached successfully.")
 
     def SliceUIDToObject(self, uid):
@@ -1609,10 +1740,13 @@ class Ui_MainWindow(object):
         Update all UI elements in the sort tab.
         """
 
+
+
         self.Saved = False
 
         # SGroup selection table
         self.SortTabSGroupfilter.clear()
+        
         self.SortTabSGroupFilterUpdate()
 
 
@@ -1648,7 +1782,7 @@ def ConverTo16bInt(raw_data, bits_per_sample, sample_format='PCM'):
     Returns:
         np.ndarray: 16-bit integer numpy array.
     """
-    if sample_format.upper() == 'FLOAT':
+    if sample_format == 'WAVE_FORMAT_IEEE_FLOAT':
         # FLOAT input: determine dtype
         if bits_per_sample == 32:
             dtype = np.float32
@@ -1661,7 +1795,7 @@ def ConverTo16bInt(raw_data, bits_per_sample, sample_format='PCM'):
         float_data = np.clip(float_data, -1.0, 1.0)  # clip to avoid overflow
         return (float_data * 32767).astype(np.int16)
 
-    elif sample_format.upper() == 'PCM':
+    elif sample_format == 'WAVE_FORMAT_PCM':
         if bits_per_sample == 8:
             # Unsigned 8-bit PCM
             data = np.frombuffer(raw_data, dtype=np.uint8)
