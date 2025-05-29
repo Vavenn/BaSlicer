@@ -20,12 +20,14 @@ from PySide6.QtWidgets import (
 from PySide6 import QtCore
 from PySide6.QtMultimedia import QAudioOutput, QAudioFormat
 from PySide6.QtCore import QRect, QSettings, QMetaObject, QCoreApplication, Qt
-from PySide6.QtGui import QCloseEvent, QAction, QFont
+from PySide6.QtGui import QCloseEvent, QAction, QFont, QIcon
 import numpy as np
 from scipy.signal import correlate
 import pyqtgraph as pg
 import sounddevice as sd
 import contextlib
+
+from settings import Ui_SettingsWindow
 
 _current_stream = None
 
@@ -91,7 +93,17 @@ class ClipboardSpinBox(QSpinBox):
         super().focusInEvent(event)
         if self.paste_callback:
             self.paste_callback()
-            
+
+class SettingsWindow(QMainWindow):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.ui = Ui_SettingsWindow()
+        self.ui.setupUi(self)
+        self.setWindowTitle("Settings - BaSlicer")
+
+    
+   
+
 class Ui_MainWindow(object):
     def __init__(self):
         self.Saved = False
@@ -148,6 +160,13 @@ class Ui_MainWindow(object):
         self.menuFile.addAction(self.actionSave_As)
         self.menuFile.addSeparator()
         self.menuFile.addAction(self.actionExit)
+
+        self.menuEdit = self.menuBar.addMenu("Edit")
+        self.SettingsAction = QAction(MainWindow)
+        self.SettingsAction.setObjectName(u"SettingsAction")
+        self.SettingsAction.setText("Settings")
+        self.SettingsAction.triggered.connect(self.DisplaySettings)
+        self.menuEdit.addAction(self.SettingsAction)
 
         self.centralwidget = QWidget(MainWindow)
         self.centralwidget.setObjectName(u"centralwidget")
@@ -1542,7 +1561,6 @@ class Ui_MainWindow(object):
         
         return int16_array.tolist()
 
-
     def CacheAudioFile(self, audio_file):
         """
         Cache audio data for the selected audio file.
@@ -1590,6 +1608,21 @@ class Ui_MainWindow(object):
             if slice.UID == uid:
                 return slice
         return None
+
+    def DisplaySettings(self):
+        """
+        Display the settings dialog.
+        """
+        print("Displaying settings dialog.")
+        self.settings_window = SettingsWindow()
+        self.settings_window.setWindowModality(Qt.ApplicationModal)
+        if getattr(sys, 'frozen', False):
+            icon = QIcon(os.path.join(sys._MEIPASS, "icon.ico"))
+        else:
+            icon = QIcon("icon.ico")
+        self.settings_window.setWindowTitle("Settings - BaSlicer")
+        self.settings_window.setWindowIcon(icon)  # Use the icon directly for the window icon
+        self.settings_window.show()
 
     def UpdateEverything(self):
         """
@@ -1821,3 +1854,4 @@ def ConverTo16bInt(raw_data, bits_per_sample, sample_format='PCM'):
             raise ValueError("Unsupported PCM bit depth")
     else:
         raise ValueError("Unsupported sample format: must be 'PCM' or 'FLOAT'")
+
