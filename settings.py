@@ -10,37 +10,27 @@
 
 from PySide6.QtCore import (QCoreApplication, QDate, QDateTime, QLocale,
     QMetaObject, QObject, QPoint, QRect,
-    QSize, QTime, QUrl, Qt)
-from PySide6.QtGui import (QAction, QBrush, QColor, QConicalGradient,
-    QCursor, QFont, QFontDatabase, QGradient,
-    QIcon, QImage, QKeySequence, QLinearGradient,
-    QPainter, QPalette, QPixmap, QRadialGradient,
-    QTransform)
-from PySide6.QtWidgets import (QAbstractButton, QApplication, QDialogButtonBox, QGroupBox,
-    QHBoxLayout, QLabel, QLayout, QMainWindow,
-    QRadioButton, QSizePolicy, QSpinBox, QVBoxLayout,
-    QWidget)
+    QSize, QTime, QUrl, Qt, QSettings, QEvent)
+from PySide6.QtGui import (QBrush, QColor, QConicalGradient, QCursor,
+    QFont, QFontDatabase, QGradient, QIcon,
+    QImage, QKeySequence, QLinearGradient, QPainter,
+    QPalette, QPixmap, QRadialGradient, QTransform)
+from PySide6.QtWidgets import (QAbstractButton, QApplication, QComboBox, QDialogButtonBox,
+    QGroupBox, QHBoxLayout, QLabel, QLayout,
+    QMainWindow, QRadioButton, QSizePolicy, QSpacerItem,
+    QSpinBox, QVBoxLayout, QWidget)
+import pyaudio
 
 class Ui_SettingsWindow(object):
     def setupUi(self, SettingsWindow):
         if not SettingsWindow.objectName():
             SettingsWindow.setObjectName(u"SettingsWindow")
-        SettingsWindow.resize(652, 443)
+        SettingsWindow.resize(652, 446)
         sizePolicy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         sizePolicy.setHorizontalStretch(1)
         sizePolicy.setVerticalStretch(1)
         sizePolicy.setHeightForWidth(SettingsWindow.sizePolicy().hasHeightForWidth())
         SettingsWindow.setSizePolicy(sizePolicy)
-        self.actionNew = QAction(SettingsWindow)
-        self.actionNew.setObjectName(u"actionNew")
-        self.actionOpen = QAction(SettingsWindow)
-        self.actionOpen.setObjectName(u"actionOpen")
-        self.actionSave = QAction(SettingsWindow)
-        self.actionSave.setObjectName(u"actionSave")
-        self.actionSave_As = QAction(SettingsWindow)
-        self.actionSave_As.setObjectName(u"actionSave_As")
-        self.actionExit = QAction(SettingsWindow)
-        self.actionExit.setObjectName(u"actionExit")
         self.settingscentralwidget = QWidget(SettingsWindow)
         self.settingscentralwidget.setObjectName(u"settingscentralwidget")
         sizePolicy.setHeightForWidth(self.settingscentralwidget.sizePolicy().hasHeightForWidth())
@@ -57,10 +47,20 @@ class Ui_SettingsWindow(object):
         self.horizontalLayout.setContentsMargins(10, 10, 10, 10)
         self.verticalLayout_2 = QVBoxLayout()
         self.verticalLayout_2.setObjectName(u"verticalLayout_2")
-        self.groupBox_2 = QGroupBox(self.verticalLayoutWidget_3)
-        self.groupBox_2.setObjectName(u"groupBox_2")
+        self.GroupGeneral = QGroupBox(self.verticalLayoutWidget_3)
+        self.GroupGeneral.setObjectName(u"GroupGeneral")
+        self.LabelAppearance = QLabel(self.GroupGeneral)
+        self.LabelAppearance.setObjectName(u"LabelAppearance")
+        self.LabelAppearance.setGeometry(QRect(10, 20, 151, 16))
+        font = QFont()
+        font.setPointSize(10)
+        font.setBold(True)
+        self.LabelAppearance.setFont(font)
+        self.comboBox_2 = QComboBox(self.GroupGeneral)
+        self.comboBox_2.setObjectName(u"comboBox_2")
+        self.comboBox_2.setGeometry(QRect(10, 40, 291, 24))
 
-        self.verticalLayout_2.addWidget(self.groupBox_2)
+        self.verticalLayout_2.addWidget(self.GroupGeneral)
 
 
         self.horizontalLayout.addLayout(self.verticalLayout_2)
@@ -75,32 +75,51 @@ class Ui_SettingsWindow(object):
         self.LabelMaxRAMUseage = QLabel(self.MemandCachebox)
         self.LabelMaxRAMUseage.setObjectName(u"LabelMaxRAMUseage")
         self.LabelMaxRAMUseage.setGeometry(QRect(59, 82, 131, 15))
-        font = QFont()
-        font.setItalic(True)
-        self.LabelMaxRAMUseage.setFont(font)
+        font1 = QFont()
+        font1.setItalic(True)
+        self.LabelMaxRAMUseage.setFont(font1)
         self.CacheAllToRAMButton = QRadioButton(self.MemandCachebox)
         self.CacheAllToRAMButton.setObjectName(u"CacheAllToRAMButton")
         self.CacheAllToRAMButton.setGeometry(QRect(10, 59, 231, 20))
         self.LoadAllFromDriveButton = QRadioButton(self.MemandCachebox)
         self.LoadAllFromDriveButton.setObjectName(u"LoadAllFromDriveButton")
         self.LoadAllFromDriveButton.setGeometry(QRect(10, 43, 231, 16))
-        self.label = QLabel(self.MemandCachebox)
-        self.label.setObjectName(u"label")
-        self.label.setGeometry(QRect(10, 23, 151, 16))
-        font1 = QFont()
-        font1.setPointSize(10)
-        font1.setBold(True)
-        self.label.setFont(font1)
+        self.LabelDataManagementType = QLabel(self.MemandCachebox)
+        self.LabelDataManagementType.setObjectName(u"LabelDataManagementType")
+        self.LabelDataManagementType.setGeometry(QRect(10, 23, 151, 16))
+        self.LabelDataManagementType.setFont(font)
 
         self.verticalLayout.addWidget(self.MemandCachebox)
 
-        self.groupBox = QGroupBox(self.verticalLayoutWidget_3)
-        self.groupBox.setObjectName(u"groupBox")
-        self.label_2 = QLabel(self.groupBox)
-        self.label_2.setObjectName(u"label_2")
-        self.label_2.setGeometry(QRect(110, 50, 49, 16))
+        self.GroupAudio = QGroupBox(self.verticalLayoutWidget_3)
+        self.GroupAudio.setObjectName(u"GroupAudio")
+        self.OutputDeviceSelectionBox = QComboBox(self.GroupAudio)
+        self.OutputDeviceSelectionBox.setObjectName(u"OutputDeviceSelectionBox")
+        self.OutputDeviceSelectionBox.setGeometry(QRect(10, 40, 291, 24))
+        self.LabelOutputDeice = QLabel(self.GroupAudio)
+        self.LabelOutputDeice.setObjectName(u"LabelOutputDeice")
+        self.LabelOutputDeice.setGeometry(QRect(10, 20, 151, 16))
+        self.LabelOutputDeice.setFont(font)
+        self.LalbelSampleRate = QLabel(self.GroupAudio)
+        self.LalbelSampleRate.setObjectName(u"LalbelSampleRate")
+        self.LalbelSampleRate.setGeometry(QRect(10, 70, 71, 16))
+        # self.LabelBitDepth = QLabel(self.GroupAudio)
+        # self.LabelBitDepth.setObjectName(u"LabelBitDepth")
+        # self.LabelBitDepth.setGeometry(QRect(150, 70, 71, 16))
+        self.LabelSampleRateValue = QLabel(self.GroupAudio)
+        self.LabelSampleRateValue.setObjectName(u"LabelSampleRateValue")
+        self.LabelSampleRateValue.setGeometry(QRect(20, 85, 121, 16))
+        self.LabelSampleRateValue.setFont(font1)
+        self.LabelSampleRateValue.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
+        self.LabelSampleRateValue.setToolTipDuration(3)
+        # self.LabelBitDepthValue = QLabel(self.GroupAudio)
+        # self.LabelBitDepthValue.setObjectName(u"LabelBitDepthValue")
+        # self.LabelBitDepthValue.setGeometry(QRect(160, 85, 141, 16))
+        # self.LabelBitDepthValue.setFont(font1)
+        # self.LabelBitDepthValue.setContextMenuPolicy(Qt.ContextMenuPolicy.ActionsContextMenu)
+        # self.LabelBitDepthValue.setToolTipDuration(3)
 
-        self.verticalLayout.addWidget(self.groupBox)
+        self.verticalLayout.addWidget(self.GroupAudio)
 
 
         self.horizontalLayout.addLayout(self.verticalLayout)
@@ -110,34 +129,142 @@ class Ui_SettingsWindow(object):
 
         self.verticalLayout_3.addLayout(self.horizontalLayout)
 
-        self.buttonBox = QDialogButtonBox(self.verticalLayoutWidget_3)
-        self.buttonBox.setObjectName(u"buttonBox")
-        self.buttonBox.setStandardButtons(QDialogButtonBox.StandardButton.Apply|QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Ok)
-        self.buttonBox.setCenterButtons(False)
+        self.ConfirmButtons = QDialogButtonBox(self.verticalLayoutWidget_3)
+        self.ConfirmButtons.setObjectName(u"ConfirmButtons")
+        self.ConfirmButtons.setStandardButtons(QDialogButtonBox.StandardButton.Apply|QDialogButtonBox.StandardButton.Cancel|QDialogButtonBox.StandardButton.Ok)
+        self.ConfirmButtons.setCenterButtons(False)
 
-        self.verticalLayout_3.addWidget(self.buttonBox)
+        self.verticalLayout_3.addWidget(self.ConfirmButtons)
+
+        self.verticalSpacer = QSpacerItem(0, 2, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+
+        self.verticalLayout_3.addItem(self.verticalSpacer)
 
         SettingsWindow.setCentralWidget(self.settingscentralwidget)
 
         self.retranslateUi(SettingsWindow)
 
         QMetaObject.connectSlotsByName(SettingsWindow)
+
+        self.UpdateAudioDevices()
+        self.UpdateEverything()
+
+        self.OutputDeviceSelectionBox.currentIndexChanged.connect(self.UpdateDeviceInfo)
+        self.ConfirmButtons.accepted.connect(self.ApplySettings)
+        self.ConfirmButtons.rejected.connect(SettingsWindow.close)
+        self.ConfirmButtons.clicked.connect(self.ApplySettings)
+        self.ConfirmButtons.clicked.connect(SettingsWindow.close)
+
+        self.GetSavedSettings()
+
     # setupUi
 
     def retranslateUi(self, SettingsWindow):
         SettingsWindow.setWindowTitle(QCoreApplication.translate("SettingsWindow", u"MainWindow", None))
-        self.actionNew.setText(QCoreApplication.translate("SettingsWindow", u"New", None))
-        self.actionOpen.setText(QCoreApplication.translate("SettingsWindow", u"Open", None))
-        self.actionSave.setText(QCoreApplication.translate("SettingsWindow", u"Save", None))
-        self.actionSave_As.setText(QCoreApplication.translate("SettingsWindow", u"Save As...", None))
-        self.actionExit.setText(QCoreApplication.translate("SettingsWindow", u"Exit", None))
-        self.groupBox_2.setTitle(QCoreApplication.translate("SettingsWindow", u"General", None))
+        self.GroupGeneral.setTitle(QCoreApplication.translate("SettingsWindow", u"General", None))
+        self.LabelAppearance.setText(QCoreApplication.translate("SettingsWindow", u"Appearance", None))
         self.MemandCachebox.setTitle(QCoreApplication.translate("SettingsWindow", u"Memory and Cache", None))
         self.LabelMaxRAMUseage.setText(QCoreApplication.translate("SettingsWindow", u"Max RAM useage (Mb)", None))
         self.CacheAllToRAMButton.setText(QCoreApplication.translate("SettingsWindow", u"Cache all to RAM  (Slow drives)", None))
         self.LoadAllFromDriveButton.setText(QCoreApplication.translate("SettingsWindow", u"Load all from drive", None))
-        self.label.setText(QCoreApplication.translate("SettingsWindow", u"Data Management Type", None))
-        self.groupBox.setTitle(QCoreApplication.translate("SettingsWindow", u"Audio", None))
-        self.label_2.setText(QCoreApplication.translate("SettingsWindow", u"todo!", None))
+        self.LabelDataManagementType.setText(QCoreApplication.translate("SettingsWindow", u"Data Management Type", None))
+        self.GroupAudio.setTitle(QCoreApplication.translate("SettingsWindow", u"Audio", None))
+        self.LabelOutputDeice.setText(QCoreApplication.translate("SettingsWindow", u"Output Device", None))
+        self.LalbelSampleRate.setText(QCoreApplication.translate("SettingsWindow", u"Sample Rate:", None))
+        # self.LabelBitDepth.setText(QCoreApplication.translate("SettingsWindow", u"Bit Depth:", None))
+        self.LabelSampleRateValue.setText(QCoreApplication.translate("SettingsWindow", u"44.100Hz", None))
+        # self.LabelBitDepthValue.setText(QCoreApplication.translate("SettingsWindow", u"32b float", None))
     # retranslateUi
+
+    # def closeEvent(self, event: QEvent):
+    #     print("Windows Closed")
+    #     self.
+    #     event.accept()  #                                  FINISH THAT HERE 
+
+    def GetAudioDevices(self):
+        """
+        Returns a list of available audio output devices.
+        """
+        # Placeholder for actual implementation
+        p = pyaudio.PyAudio()
+        devices = []
+        for i in range(p.get_device_count()):
+            devices.append(p.get_device_info_by_index(i)['name'])
+
+        return devices
+    
+    def UpdateAudioDevices(self):
+        """
+        Updates the audio output device selection box with available devices.
+        """
+        devices = self.GetAudioDevices()
+        self.OutputDeviceSelectionBox.clear()
+        self.OutputDeviceSelectionBox.addItems(devices)
+
+    def UpdateDeviceInfo(self):
+        """
+        Updates the sample rate and bit depth labels based on the selected device.
+        """
+        selected_device = self.OutputDeviceSelectionBox.currentIndex()
+        p = pyaudio.PyAudio()
+        device_info = p.get_device_info_by_index(selected_device)
+        # print(device_info)
+        sample_rate = device_info['defaultSampleRate']
+        # bit_depth = device_info['defaultSampleFormat']
+
+        #update labels
+        self.LabelSampleRateValue.setText(f"{int(sample_rate)}Hz")
+        # self.LabelBitDepthValue.setText(f"{bit_depth}b float" if bit_depth == pyaudio.paFloat32 else f"{bit_depth}b int")
+
+    def UpdateEverything(self):
+        """
+        Updates all settings in the UI.
+        """
+        self.UpdateDeviceInfo()
+
+    def DeviceNameToIndex(self, device_name):
+        """
+        Returns the index of the device with the given name.
+        """
+        devices = self.GetAudioDevices()
+        if device_name in devices:
+            return devices.index(device_name)
+        return 0
+
+    def GetSavedSettings(self):
+        settings = QSettings("Vaven", "BaSlicer")
+        settings.beginGroup("Audio")
+        output_device = settings.value("OutputDevice", "Default")
+        output_device_index = self.DeviceNameToIndex(output_device)
+        # Set the output device index in the combo box
+        self.OutputDeviceSelectionBox.setCurrentIndex(output_device_index)
+
+        settings.endGroup()
+        settings.beginGroup("Memory")
+        cache_type = settings.value("CacheType", "LoadAllFromDrive")
+        max_ram_usage = settings.value("MaxRAMUsage", 1024, type=int)
+        if cache_type == "CacheAllToRAM":
+            self.CacheAllToRAMButton.setChecked(True)
+        else:
+            self.LoadAllFromDriveButton.setChecked(True)
+        self.MaxAllocRAMBox.setValue(max_ram_usage)
+        settings.endGroup()
+
+    def ApplySettings(self):
+        """
+        Applies the current settings to the application.
+        """
+        settings = QSettings("Vaven", "BaSlicer")
+        settings.beginGroup("Audio")
+        settings.setValue("OutputDevice", self.OutputDeviceSelectionBox.currentText())
+        settings.endGroup()
+
+        settings.beginGroup("Memory")
+        if self.CacheAllToRAMButton.isChecked():
+            settings.setValue("CacheType", "CacheAllToRAM")
+        else:
+            settings.setValue("CacheType", "LoadAllFromDrive")
+        settings.setValue("MaxRAMUsage", self.MaxAllocRAMBox.value())
+        settings.endGroup()
+
 

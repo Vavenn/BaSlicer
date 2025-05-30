@@ -24,7 +24,7 @@ from PySide6.QtGui import QCloseEvent, QAction, QFont, QIcon
 import numpy as np
 from scipy.signal import correlate
 import pyqtgraph as pg
-import sounddevice as sd
+import pyaudio
 import contextlib
 
 from settings import Ui_SettingsWindow
@@ -782,7 +782,7 @@ class Ui_MainWindow(object):
         """
         File Opening Dialog, WAV only.
         """
-        settings = QSettings("BaSlicer", "FileDialogs") 
+        settings = QSettings("Vaven", "BaSlicer")
         last_dir = settings.value("lastWavImportDir", "")
         
         file_path, _ = QFileDialog.getOpenFileName(
@@ -836,7 +836,7 @@ class Ui_MainWindow(object):
 
         self.NotSavedPrompt("You have unsaved changes. Do you want to save before loading a new project?")
 
-        settings = QSettings("BaSlicer", "FileDialogs")
+        settings = QSettings("Vaven", "BaSlicer")
         last_dir = settings.value("lastProjectOpenDir", "")
 
         open_file, _ = QFileDialog.getOpenFileName(
@@ -890,7 +890,7 @@ class Ui_MainWindow(object):
         """
         Save shtuff
         """
-        settings = QSettings("BaSlicer", "FileDialogs")
+        settings = QSettings("Vaven", "BaSlicer")
         last_dir = settings.value("lastProjectSaveDir", "")
 
         if not self.project_file_path:
@@ -1338,7 +1338,6 @@ class Ui_MainWindow(object):
             self.WaveformVisu.clear()  # Clear the waveform display
             
 
-
     def SortTabAudioAnalysisUpdate(self):
         """
         Analyze the selected slice and update the audio preview.
@@ -1624,6 +1623,8 @@ class Ui_MainWindow(object):
         self.settings_window.setWindowIcon(icon)  # Use the icon directly for the window icon
         self.settings_window.show()
 
+        print("MEEP!")
+
     def UpdateEverything(self):
         """
         Update all UI elements in the main window.
@@ -1854,4 +1855,37 @@ def ConverTo16bInt(raw_data, bits_per_sample, sample_format='PCM'):
             raise ValueError("Unsupported PCM bit depth")
     else:
         raise ValueError("Unsupported sample format: must be 'PCM' or 'FLOAT'")
+
+def FastResample(samples, original_rate, target_rate):
+    """
+    Fast and low-quality resampling
+    
+    Args:
+        samples (list or np.array): Input samples.
+        original_rate (int): Original sample rate.
+        target_rate (int): Target sample rate.
+
+    Returns:
+        np.array: Resampled audio samples.
+    """
+    if not isinstance(samples, (list, np.ndarray)):
+        raise ValueError("Samples must be a list or numpy array.")
+
+    if original_rate <= 0 or target_rate <= 0:
+        raise ValueError("Sample rates must be positive integers.")
+
+    if original_rate == target_rate:
+        return np.asarray(samples)
+
+    samples = np.asarray(samples)
+    ratio = target_rate / original_rate
+    n_target_samples = int(len(samples) * ratio)
+
+    indices = np.linspace(0, len(samples) - 1, n_target_samples).astype(int)
+    resampled = samples[indices]
+
+    return resampled
+    
+
+
 
