@@ -26,6 +26,7 @@ from scipy.signal import correlate
 import pyqtgraph as pg
 import pyaudio
 import contextlib
+import qdarktheme
 
 from settings import Ui_SettingsWindow
 
@@ -95,14 +96,17 @@ class ClipboardSpinBox(QSpinBox):
             self.paste_callback()
 
 class SettingsWindow(QMainWindow):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, main_ui=None):
         super().__init__(parent)
         self.ui = Ui_SettingsWindow()
         self.ui.setupUi(self)
         self.setWindowTitle("Settings - BaSlicer")
+        self.main_ui = main_ui  # Store reference to main UI
 
-    
-   
+    def closeEvent(self, event):
+        if self.main_ui:
+            self.main_ui.MainApplySettings()
+        super().closeEvent(event)
 
 class Ui_MainWindow(object):
     def __init__(self):
@@ -120,6 +124,7 @@ class Ui_MainWindow(object):
         self.UIDCounter = 0
 
     def setupUi(self, MainWindow):
+        
         DEV = True
         self.audio_output = QAudioOutput()
         if not MainWindow.objectName():
@@ -349,6 +354,46 @@ class Ui_MainWindow(object):
         self.Slice = QWidget()
         self.Slice.setObjectName(u"Slice")
         SliceMainLayout = QVBoxLayout(self.Slice)
+        
+
+        self.SliceAudioEdition = QGroupBox(self.Slice)
+        self.SliceAudioEdition.setObjectName(u"SliceAudioEdition")
+        SliceAudioEditionLayout = QVBoxLayout(self.SliceAudioEdition)
+
+        self.SliceAudioContainer = QWidget(self.SliceAudioEdition)
+        AudioPreviewContainerLayout = QVBoxLayout(self.SliceAudioContainer)
+        self.SliceWaveformVisu = pg.PlotWidget(self.SliceAudioContainer)
+        self.SliceWaveformVisu.setObjectName(u"AudioPreviewPlaceholder")
+        self.SliceWaveformVisu.setBackground("lightgray")
+        self.SliceWaveformVisu.showGrid(x=False, y=False)
+        self.SliceWaveformVisu.getPlotItem().hideAxis("bottom")
+        self.SliceWaveformVisu.getPlotItem().hideAxis("left")
+        self.SliceWaveformVisu.getPlotItem().setMenuEnabled(False)
+        self.SliceWaveformVisu.getPlotItem().setLimits(yMin=-1, yMax=1)
+        self.SliceWaveformVisu.setMouseEnabled(x=True, y=False)
+        self.SliceWaveformVisu.plotItem.setMenuEnabled(False)
+        self.SliceWaveformVisu.plotItem.setMouseEnabled(y=False)
+        AudioPreviewContainerLayout.addWidget(self.SliceWaveformVisu)
+        self.SliceAudioContainer.setLayout(AudioPreviewContainerLayout)
+        SliceAudioEditionLayout.addWidget(self.SliceAudioContainer)
+        SliceMainLayout.addWidget(self.SliceAudioEdition)
+
+        # --- Audio File Selection for Slice Waveform ---
+        AudioFileSelectLayout = QHBoxLayout()
+        # self.SliceAudioFileSelectLabel = QLabel(self.SliceAudioEdition)
+        # self.SliceAudioFileSelectLabel.setText("Audio File:")
+        # AudioFileSelectLayout.addWidget(self.SliceAudioFileSelectLabel)
+
+        self.SliceAudioFileSelect = QComboBox(self.SliceAudioEdition)
+        self.SliceAudioFileSelect.setObjectName(u"SliceAudioFileSelect")
+        self.SliceAudioFileSelect.currentIndexChanged.connect(self.SliceAudioWaveformUpdate)
+        AudioFileSelectLayout.addWidget(self.SliceAudioFileSelect)
+
+        # Optionally, connect to a method to update the waveform when selection changes
+        # self.SliceAudioFileSelect.currentIndexChanged.connect(self.UpdateSliceWaveform)
+
+        SliceAudioEditionLayout.addLayout(AudioFileSelectLayout)
+
 
         # --- Top Controls (Sample Group selection, cutpoint, end, buttons) ---
         TopControlsLayout = QHBoxLayout()
@@ -369,6 +414,7 @@ class Ui_MainWindow(object):
         self.SampleGroupSelection.verticalHeader().setVisible(False)
         self.SampleGroupSelection.horizontalHeader().setVisible(False)
         self.SampleGroupSelection.clicked.connect(self.UpdateSelectedSGroup)
+        self.SampleGroupSelection.clicked.connect(self.PopulateSliceTabAudioPreviewBox)
         
 
         SGroupsButtonsLayout = QHBoxLayout()
@@ -459,6 +505,7 @@ class Ui_MainWindow(object):
         self.Sample_Cut_Data_Table.verticalHeader().setVisible(False)
         self.Sample_Cut_Data_Table.setSelectionBehavior(QTableWidget.SelectRows)
         self.Sample_Cut_Data_Table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        
         SliceMainLayout.addWidget(self.Sample_Cut_Data_Table)
 
         self.Slice.setLayout(SliceMainLayout)
@@ -560,7 +607,7 @@ class Ui_MainWindow(object):
 
         self.SortPreviewAudioSelect = QComboBox(self.SortAudioPreview)
         self.SortPreviewAudioSelect.setObjectName(u"SortPreviewAudioSelect")
-        self.SortPreviewAudioSelect.currentIndexChanged.connect(self.AudioWaveformUpdate)
+        self.SortPreviewAudioSelect.currentIndexChanged.connect(self.SortAudioWaveformUpdate)
         AudioPreviewControlsLayout.addWidget(self.SortPreviewAudioSelect)
 
         SortAudioPreviewLayout.addLayout(AudioPreviewControlsLayout)
@@ -691,6 +738,7 @@ class Ui_MainWindow(object):
         self.MainTabs.setCurrentIndex(0)
         self.retranslateUi(MainWindow)
         QMetaObject.connectSlotsByName(MainWindow)
+        self.MainApplySettings()
     # setupUi
 
     def retranslateUi(self, MainWindow):
@@ -1288,7 +1336,7 @@ class Ui_MainWindow(object):
             self.SortTabSliceList.setItem(i, 2, QTableWidgetItem(str(slice.start))) # 2 = Absolute Startpoint
             self.SortTabSliceList.setItem(i, 3, QTableWidgetItem(str(slice.end))) # 3 = Absolute Endpoint
 
-    def WaveformPlot(self, audio_data):
+    def WaveformPlot(self, audio_data, graphitem):
         """
         Plot the waveform of the audio data.
         """
@@ -1305,17 +1353,17 @@ class Ui_MainWindow(object):
 
         try:
             samples = data
-            self.WaveformVisu.clear()  
+            graphitem.clear()
 
-            self.WaveformVisu.setXRange(start_time, end_time, padding=0)
-            self.WaveformVisu.setYRange(-1, 1, padding=0.1)
+            graphitem.setXRange(start_time, end_time, padding=0)
+            graphitem.setYRange(-1, 1, padding=0.1)
 
             time_axis = np.linspace(start_time, end_time, num=len(samples))
             maax = max([max(samples), abs(min(samples))])
             if maax == 0:
                 maax = 1  # let's try to not break mathematics today
             samples = [n / maax for n in samples]
-            self.WaveformVisu.plot(time_axis, samples, pen="blue")
+            graphitem.plot(time_axis, samples, pen="blue")
 
         #     # Detect pitch and update labels and inputs
         #     pitch_difference, note = detect_pitch(samples, samplerate=44100)  # Assuming 44100 Hz sample rate
@@ -1333,10 +1381,7 @@ class Ui_MainWindow(object):
 
         except Exception as e:
             print(f"Error loading audio file: {e}")
-            self.FrequencyLabel.setText("Pitch Difference: N/A")
-            self.NoteLabel.setText("Note: N/A")
-            self.WaveformVisu.clear()  # Clear the waveform display
-            
+            graphitem.clear()  # Clear the waveform display
 
     def SortTabAudioAnalysisUpdate(self):
         """
@@ -1363,10 +1408,13 @@ class Ui_MainWindow(object):
             print("No slice object found.")
             return
         
-        Slice_Audio = self.GetAudioData(SliceObject)
+        start = SliceObject.start
+        end = SliceObject.end
+
+        Slice_Audio = self.GetAudioData(SliceObject, start, end)
 
         if Slice_Audio is None:
-            print("Error getting audio data.")
+            print("Error getting audio data.  -sorttab-")
             return
         
         Names = []
@@ -1377,13 +1425,13 @@ class Ui_MainWindow(object):
         for name in Names:
             self.SortPreviewAudioSelect.addItem(name)
 
-        self.AudioWaveformUpdate()
+        self.SortAudioWaveformUpdate()
 
         
 
                                                          # REDO ALL AUDIO LOADING THINGS
 
-    def AudioWaveformUpdate(self):   
+    def SortAudioWaveformUpdate(self):   
         selected_slice = self.SortTabSliceList.selectedIndexes()
         if not selected_slice:
             print("No slice selected.")
@@ -1400,10 +1448,14 @@ class Ui_MainWindow(object):
         if not SliceObject:
             print("No slice object found.")
             return
-        Slice_Audio = self.GetAudioData(SliceObject)
+        
+        start = SliceObject.start
+        end = SliceObject.end
+
+        Slice_Audio = self.GetAudioData(SliceObject, start, end)
 
         if Slice_Audio is None:
-            print("Error getting audio data.")
+            print("Error getting audio data. -sortwaveformupdate-")
             return
 
         #get selected audio file
@@ -1422,34 +1474,126 @@ class Ui_MainWindow(object):
         end = SliceObject.end
 
         if audio_data is None:
+            print("Error loading audio file -sortaudiowaveformupdate2-.")
+            return
+
+        self.WaveformPlot(audio_data, self.WaveformVisu)
+
+    def SliceAudioWaveformUpdate(self):   
+        selected_audio = self.SliceAudioFileSelect.currentText()
+        if not selected_audio:
+            print("No audio file selected.")
+            return
+        
+        audio_obj = self.AudioNamesToObjects([selected_audio])[0]
+        if not audio_obj:
+            print(f"Audio object for '{selected_audio}' not found.")
+            return
+
+        start = 0
+        end = audio_obj.length
+
+        AudioData = self.GetAudioData(audio_obj, start, end)
+
+        if AudioData is None or len(AudioData) == 0:
+            print("Error getting audio data. -slicewaveformupdate-")
+            return
+
+        # Use the selected audio file name from SLICETAB, not from Sort tab!
+        audio_data = None
+        for audio_file in AudioData:
+            if audio_file[0] == selected_audio:
+                audio_data = audio_file[1]
+                break
+
+        if audio_data is None:
             print("Audio data for selected file not found in cache.")
             return
 
-        audio_data = audio_data[start:end]
+        self.WaveformPlot(audio_data, self.SliceWaveformVisu)
 
+    def GetAudioData(self, obj, start=None, end=None):
+        '''
+        Get cached audio data for the selected slice or audio file.
+        Accepts either a Slice, SampleGroup, or AudioFile.
+        Returns a list of [name, audio_data] pairs.
+        '''
+        print(f"begin {obj}")
 
-        self.WaveformPlot(audio_data)
+        # Handle AudioFile directly
+        if isinstance(obj, AudioFile):
+            length = obj.length
+            start = start if start is not None else 0
+            end = end if end is not None else length
+            if not os.path.isfile(obj.file_path):
+                print(f"File not found: {obj.file_path}")
+                return []
+            try:
+                with PyWave.open(obj.file_path, 'r') as wav_file:
+                    if end == 0 or end > wav_file.samples:
+                        audio_end = wav_file.samples
+                    else:
+                        audio_end = end
+                    audio_data = wav_file.read_samples(audio_end)
+                    format = wav_file.format
+                    if format == 1: format = "WAVE_FORMAT_PCM"
+                    elif format == 2: format = "WAVE_FORMAT_IEEE_FLOAT"
+                    else: format = "Unknown"
+                    audio_data = self.convert_to_int16(audio_data, wav_file.bits_per_sample, format)
+                    audio_data = audio_data[start:end]
+                    return [[obj.name, audio_data]]
+            except Exception as e:
+                print(f"Error loading audio file {obj.name}: {e}")
+                return []
 
-    def GetAudioData(self, slice):
-        """
-        Get cached audio data for the selected slice.
-        """
-        if type(slice) != Slice:
-            print("Invalid slice object.")
-            return None
+        # Handle SampleGroup
+        if isinstance(obj, SampleGroup):
+            obj = Slice(0, 0, [obj], False, None, None, None)
 
+        # Handle Slice
+        if not isinstance(obj, Slice):
+            print(f"Invalid object for GetAudioData: {type(obj)}")
+            return []
 
-        self.CacheSliceAudioData(slice)
+        # Use slice's start/end if not provided
+        start = start if start is not None else obj.start
+        end = end if end is not None else obj.end
 
         out = []
 
-        for sgroup in slice.sample_groups:
-            for audio_file in sgroup.audio_files:
-                name = audio_file.name
-                for cached_audio in self.CACHEDAUDIOFILES:
-                    if cached_audio[0] == name:
-                        out.append([name, cached_audio[1]])
-            
+        if self.CacheType == "LoadAllFromDrive":
+            for sgroup in obj.sample_groups:
+                for audio_file in sgroup.audio_files:
+                    name = audio_file.name
+                    if not os.path.isfile(audio_file.file_path):
+                        print(f"File not found: {audio_file.file_path}")
+                        continue
+                    try:
+                        with PyWave.open(audio_file.file_path, 'r') as wav_file:
+                            if end == 0 or end > wav_file.samples:
+                                audio_end = wav_file.samples
+                            else:
+                                audio_end = end
+                            audio_data = wav_file.read_samples(audio_end)
+                            format = wav_file.format
+                            if format == 1: format = "WAVE_FORMAT_PCM"
+                            elif format == 2: format = "WAVE_FORMAT_IEEE_FLOAT"
+                            else: format = "Unknown"
+                            audio_data = self.convert_to_int16(audio_data, wav_file.bits_per_sample, format)
+                            audio_data = audio_data[start:end]
+                            out.append([name, audio_data])
+                    except Exception as e:
+                        print(f"Error loading audio file {name}: {e}")
+        else:
+            self.CacheSliceAudioData(obj)
+            for sgroup in obj.sample_groups:
+                for audio_file in sgroup.audio_files:
+                    name = audio_file.name
+                    for cached_audio in self.CACHEDAUDIOFILES:
+                        if cached_audio[0] == name:
+                            cached_audio_data = cached_audio[1][start:end]
+                            out.append([name, cached_audio_data])
+
         return out
 
     def CheckSliceAudioCache(self, slice):
@@ -1458,7 +1602,7 @@ class Ui_MainWindow(object):
         Return audio names of uncached audio
         """
         if type(slice) != Slice:
-            print("Invalid slice object.")
+            print("Invalid slice object. -checkslice-")
             return
 
         out = []
@@ -1480,8 +1624,12 @@ class Ui_MainWindow(object):
         """
         Cache audio data for the selected slice.
         """
+
+        if self.CacheType == "LoadAllFromDrive":
+            return
+
         if type(slice) != Slice:
-            print("Invalid slice object.")
+            print("Invalid slice object. -cacheslice-")
             return
         
         to_cache = self.CheckSliceAudioCache(slice)
@@ -1493,14 +1641,14 @@ class Ui_MainWindow(object):
         for audio_file in to_cache:
             self.CacheAudioFile(audio_file)  
 
-    def convert_to_int16(self, raw_data, bits_per_sample, sample_format='WAVE_FORMAT_PCM'):
+    def convert_to_int16(self, raw_data, bits_per_sample, sample_format='PCM'):
         """
         Convert raw audio bytes of any supported bit depth/format to 16-bit PCM.
 
         Args:
             raw_data (bytes): The raw audio byte stream.
             bits_per_sample (int): Bit depth of the input data (8, 16, 24, 32, 64).
-            sample_format (str): 'WAVE_FORMAT_PCM' or 'WAVE_FORMAT_IEEE_FLOAT'.
+            sample_format (str): 'PCM' or 'FLOAT'.
 
         Returns:
             np.ndarray: 16-bit integer numpy array.
@@ -1531,8 +1679,8 @@ class Ui_MainWindow(object):
                 samples = samples.reshape(-1, 3)
                 # Combine bytes (little endian): pad with sign byte
                 int32 = (samples[:, 0].astype(np.int32) |
-                        (samples[:, 1].astype(np.int32) << 8) |
-                        (samples[:, 2].astype(np.int32) << 16))
+                     (samples[:, 1].astype(np.int32) << 8) |
+                     (samples[:, 2].astype(np.int32) << 16))
                 # Sign extension for 24-bit
                 int32 = np.where(int32 & 0x800000, int32 | ~0xFFFFFF, int32)
                 return (int32 >> 8).astype(np.int16)
@@ -1543,7 +1691,7 @@ class Ui_MainWindow(object):
             else:
                 raise ValueError("Unsupported PCM bit depth")
         else:
-            raise ValueError(f"Unsupported sample format: must be 'PCM' or 'FLOAT': {sample_format}")
+            raise ValueError("Unsupported sample format: must be 'PCM' or 'FLOAT'")
 
     def int16_to_list(self, int16_array):
         """
@@ -1564,6 +1712,8 @@ class Ui_MainWindow(object):
         """
         Cache audio data for the selected audio file.
         """
+        if self.CacheType == "LoadAllFromDrive":
+            return
         print("Caching audio file...")
         if type(audio_file) != AudioFile:
             print("Invalid audio file object.")
@@ -1613,17 +1763,36 @@ class Ui_MainWindow(object):
         Display the settings dialog.
         """
         print("Displaying settings dialog.")
-        self.settings_window = SettingsWindow()
+        self.settings_window = SettingsWindow(main_ui=self)
+
         self.settings_window.setWindowModality(Qt.ApplicationModal)
         if getattr(sys, 'frozen', False):
             icon = QIcon(os.path.join(sys._MEIPASS, "icon.ico"))
         else:
             icon = QIcon("icon.ico")
         self.settings_window.setWindowTitle("Settings - BaSlicer")
-        self.settings_window.setWindowIcon(icon)  # Use the icon directly for the window icon
+        self.settings_window.setWindowIcon(icon)
         self.settings_window.show()
-
         print("MEEP!")
+
+    def MainApplySettings(self):
+        """
+        Apply the settings from the settings dialog.
+        """
+        print("Applying settings from the settings dialog.")
+        # Get settings from QSettings
+        settings = QSettings("Vaven", "BaSlicer")
+        settings.beginGroup("Memory")
+        self.CacheType = settings.value("CacheType", "Memory")
+        self.AudioCacheSize = settings.value("AudioCacheSize", 100)  # Default to 100 MB
+        settings.endGroup()
+        settings.beginGroup("Audio")
+        self.AudioDevice = settings.value("OutputDevice", "Default")
+        settings.endGroup()
+        settings.beginGroup("General")
+        theme = settings.value("Theme", "light")
+        qdarktheme.setup_theme(theme)
+        settings.endGroup()
 
     def UpdateEverything(self):
         """
@@ -1670,6 +1839,31 @@ class Ui_MainWindow(object):
                 if checkbox_item and name and name.text() == selectedgroup:
                     checkbox_item.setCheckState(Qt.CheckState.Checked)
                     break
+
+    def PopulateSliceTabAudioPreviewBox(self):
+        """
+        Populate the audio preview box in the slice tab.
+        """
+        
+        self.SliceAudioFileSelect.clear()
+        selected_sgroups = self.SliceTabSelectedSGroups
+        if not selected_sgroups:
+            print("No sample groups selected.")
+            return
+        names = []
+        for sgroup_name in selected_sgroups:
+            sgroup = self.SGroupNameToObject(sgroup_name)
+            if not sgroup:
+                print(f"Sample group '{sgroup_name}' not found.")
+                continue
+            for audio_file in sgroup.audio_files:
+                audio_item = audio_file.name
+                print(f"Adding audio file '{audio_file.name}' from sample group '{sgroup_name}' to SliceAudioFileSelect.")
+                names.append(audio_item)
+
+        names = list(dict.fromkeys(names))
+
+        self.SliceAudioFileSelect.addItems(names)
 
     def UpdateSelectedSGroup(self):
         '''
@@ -1782,8 +1976,6 @@ class Ui_MainWindow(object):
         self.SortTabSGroupfilter.clear()
         
         self.SortTabSGroupFilterUpdate()
-
-
 def GetWavInfo(file_path: str) -> tuple[int, int, int, int]:
     """
     Extracts WAV file attributes using the PyWave module.
@@ -1885,7 +2077,7 @@ def FastResample(samples, original_rate, target_rate):
     resampled = samples[indices]
 
     return resampled
-    
+
 
 
 

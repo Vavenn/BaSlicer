@@ -56,9 +56,11 @@ class Ui_SettingsWindow(object):
         font.setPointSize(10)
         font.setBold(True)
         self.LabelAppearance.setFont(font)
-        self.comboBox_2 = QComboBox(self.GroupGeneral)
-        self.comboBox_2.setObjectName(u"comboBox_2")
-        self.comboBox_2.setGeometry(QRect(10, 40, 291, 24))
+        self.ThemeSelectBox = QComboBox(self.GroupGeneral)
+        self.ThemeSelectBox.setObjectName(u"comboBox_2")
+        self.ThemeSelectBox.setGeometry(QRect(10, 40, 291, 24))
+        self.ThemeSelectBox.addItem("light")
+        self.ThemeSelectBox.addItem("dark")
 
         self.verticalLayout_2.addWidget(self.GroupGeneral)
 
@@ -72,12 +74,14 @@ class Ui_SettingsWindow(object):
         self.MaxAllocRAMBox = QSpinBox(self.MemandCachebox)
         self.MaxAllocRAMBox.setObjectName(u"MaxAllocRAMBox")
         self.MaxAllocRAMBox.setGeometry(QRect(180, 81, 81, 20))
-        self.LabelMaxRAMUseage = QLabel(self.MemandCachebox)
-        self.LabelMaxRAMUseage.setObjectName(u"LabelMaxRAMUseage")
-        self.LabelMaxRAMUseage.setGeometry(QRect(59, 82, 131, 15))
+        self.MaxAllocRAMBox.setMinimum(128)
+        self.MaxAllocRAMBox.setMaximum(1000000)
+        self.LabelMaxRAMUsage = QLabel(self.MemandCachebox)
+        self.LabelMaxRAMUsage.setObjectName(u"LabelMaxRAMUseage")
+        self.LabelMaxRAMUsage.setGeometry(QRect(59, 82, 131, 15))
         font1 = QFont()
         font1.setItalic(True)
-        self.LabelMaxRAMUseage.setFont(font1)
+        self.LabelMaxRAMUsage.setFont(font1)
         self.CacheAllToRAMButton = QRadioButton(self.MemandCachebox)
         self.CacheAllToRAMButton.setObjectName(u"CacheAllToRAMButton")
         self.CacheAllToRAMButton.setGeometry(QRect(10, 59, 231, 20))
@@ -154,6 +158,8 @@ class Ui_SettingsWindow(object):
         self.ConfirmButtons.rejected.connect(SettingsWindow.close)
         self.ConfirmButtons.clicked.connect(self.ApplySettings)
         self.ConfirmButtons.clicked.connect(SettingsWindow.close)
+        self.CacheAllToRAMButton.toggled.connect(self.CacheRadioButtonClicked)
+        self.LoadAllFromDriveButton.toggled.connect(self.CacheRadioButtonClicked)
 
         self.GetSavedSettings()
 
@@ -164,7 +170,7 @@ class Ui_SettingsWindow(object):
         self.GroupGeneral.setTitle(QCoreApplication.translate("SettingsWindow", u"General", None))
         self.LabelAppearance.setText(QCoreApplication.translate("SettingsWindow", u"Appearance", None))
         self.MemandCachebox.setTitle(QCoreApplication.translate("SettingsWindow", u"Memory and Cache", None))
-        self.LabelMaxRAMUseage.setText(QCoreApplication.translate("SettingsWindow", u"Max RAM useage (Mb)", None))
+        self.LabelMaxRAMUsage.setText(QCoreApplication.translate("SettingsWindow", u"Max RAM useage (Mb)", None))
         self.CacheAllToRAMButton.setText(QCoreApplication.translate("SettingsWindow", u"Cache all to RAM  (Slow drives)", None))
         self.LoadAllFromDriveButton.setText(QCoreApplication.translate("SettingsWindow", u"Load all from drive", None))
         self.LabelDataManagementType.setText(QCoreApplication.translate("SettingsWindow", u"Data Management Type", None))
@@ -249,6 +255,11 @@ class Ui_SettingsWindow(object):
             self.LoadAllFromDriveButton.setChecked(True)
         self.MaxAllocRAMBox.setValue(max_ram_usage)
         settings.endGroup()
+        settings.beginGroup("General")
+        theme = settings.value("Theme", "light")
+        settings.endGroup()
+
+        self.ThemeSelectBox.setCurrentText(theme)
 
     def ApplySettings(self):
         """
@@ -266,5 +277,22 @@ class Ui_SettingsWindow(object):
             settings.setValue("CacheType", "LoadAllFromDrive")
         settings.setValue("MaxRAMUsage", self.MaxAllocRAMBox.value())
         settings.endGroup()
+        settings.beginGroup("General")
+        settings.setValue("Theme", self.ThemeSelectBox.currentText())
+        settings.endGroup()
+
+    def CacheRadioButtonClicked(self):
+        """
+        Handles the cache radio button click event.
+        """
+        if self.CacheAllToRAMButton.isChecked():
+            self.MaxAllocRAMBox.setEnabled(True)
+            self.LabelMaxRAMUsage.setStyleSheet("color: black;")
+
+        else:
+            self.MaxAllocRAMBox.setEnabled(False)
+            self.LabelMaxRAMUsage.setStyleSheet("color: gray;")
+
+
 
 
