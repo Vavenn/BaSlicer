@@ -27,6 +27,7 @@ import pyqtgraph as pg
 import pyaudio
 import contextlib
 import qdarktheme
+from memory_profiler import profile
 
 from settings import Ui_SettingsWindow
 
@@ -107,6 +108,7 @@ class SettingsWindow(QMainWindow):
         if self.main_ui:
             self.main_ui.MainApplySettings()
         super().closeEvent(event)
+
 
 class Ui_MainWindow(object):
     def __init__(self):
@@ -360,22 +362,23 @@ class Ui_MainWindow(object):
         self.SliceAudioEdition.setObjectName(u"SliceAudioEdition")
         SliceAudioEditionLayout = QVBoxLayout(self.SliceAudioEdition)
 
-        self.SliceAudioContainer = QWidget(self.SliceAudioEdition)
-        AudioPreviewContainerLayout = QVBoxLayout(self.SliceAudioContainer)
-        self.SliceWaveformVisu = pg.PlotWidget(self.SliceAudioContainer)
-        self.SliceWaveformVisu.setObjectName(u"AudioPreviewPlaceholder")
-        self.SliceWaveformVisu.setBackground("lightgray")
-        self.SliceWaveformVisu.showGrid(x=False, y=False)
-        self.SliceWaveformVisu.getPlotItem().hideAxis("bottom")
-        self.SliceWaveformVisu.getPlotItem().hideAxis("left")
-        self.SliceWaveformVisu.getPlotItem().setMenuEnabled(False)
-        self.SliceWaveformVisu.getPlotItem().setLimits(yMin=-1, yMax=1)
-        self.SliceWaveformVisu.setMouseEnabled(x=True, y=False)
-        self.SliceWaveformVisu.plotItem.setMenuEnabled(False)
-        self.SliceWaveformVisu.plotItem.setMouseEnabled(y=False)
-        AudioPreviewContainerLayout.addWidget(self.SliceWaveformVisu)
-        self.SliceAudioContainer.setLayout(AudioPreviewContainerLayout)
-        SliceAudioEditionLayout.addWidget(self.SliceAudioContainer)
+        # self.SliceAudioContainer = QWidget(self.SliceAudioEdition)
+        # AudioPreviewContainerLayout = QVBoxLayout(self.SliceAudioContainer)
+        # self.SliceWaveformVisu = pg.PlotWidget(self.SliceAudioContainer)
+        # self.SliceWaveformVisu.setObjectName(u"AudioPreviewPlaceholder")
+        # self.SliceWaveformVisu.setBackground("lightgray")
+        # self.SliceWaveformVisu.showGrid(x=False, y=False)
+        # self.SliceWaveformVisu.getPlotItem().hideAxis("bottom")
+        # self.SliceWaveformVisu.getPlotItem().hideAxis("left")
+        # self.SliceWaveformVisu.getPlotItem().setMenuEnabled(False)
+        # self.SliceWaveformVisu.getPlotItem().setLimits(yMin=-1, yMax=1)
+        # self.SliceWaveformVisu.setMouseEnabled(x=True, y=False)
+        # self.SliceWaveformVisu.plotItem.setMenuEnabled(False)
+        # self.SliceWaveformVisu.plotItem.setMouseEnabled(y=False)
+        # self.SliceWaveformVisu.sigXRangeChanged.connect(self.on_waveform_view_changed)
+        # AudioPreviewContainerLayout.addWidget(self.SliceWaveformVisu)
+        # self.SliceAudioContainer.setLayout(AudioPreviewContainerLayout)
+        # SliceAudioEditionLayout.addWidget(self.SliceAudioContainer)
         SliceMainLayout.addWidget(self.SliceAudioEdition)
 
         # --- Audio File Selection for Slice Waveform ---
@@ -384,10 +387,10 @@ class Ui_MainWindow(object):
         # self.SliceAudioFileSelectLabel.setText("Audio File:")
         # AudioFileSelectLayout.addWidget(self.SliceAudioFileSelectLabel)
 
-        self.SliceAudioFileSelect = QComboBox(self.SliceAudioEdition)
-        self.SliceAudioFileSelect.setObjectName(u"SliceAudioFileSelect")
-        self.SliceAudioFileSelect.currentIndexChanged.connect(self.SliceAudioWaveformUpdate)
-        AudioFileSelectLayout.addWidget(self.SliceAudioFileSelect)
+        # self.SliceAudioFileSelect = QComboBox(self.SliceAudioEdition)
+        # self.SliceAudioFileSelect.setObjectName(u"SliceAudioFileSelect")
+        # self.SliceAudioFileSelect.currentIndexChanged.connect(self.SliceAudioWaveformUpdate)
+        # AudioFileSelectLayout.addWidget(self.SliceAudioFileSelect)
 
         # Optionally, connect to a method to update the waveform when selection changes
         # self.SliceAudioFileSelect.currentIndexChanged.connect(self.UpdateSliceWaveform)
@@ -414,7 +417,7 @@ class Ui_MainWindow(object):
         self.SampleGroupSelection.verticalHeader().setVisible(False)
         self.SampleGroupSelection.horizontalHeader().setVisible(False)
         self.SampleGroupSelection.clicked.connect(self.UpdateSelectedSGroup)
-        self.SampleGroupSelection.clicked.connect(self.PopulateSliceTabAudioPreviewBox)
+        # self.SampleGroupSelection.clicked.connect(self.PopulateSliceTabAudioPreviewBox)
         
 
         SGroupsButtonsLayout = QHBoxLayout()
@@ -1336,52 +1339,96 @@ class Ui_MainWindow(object):
             self.SortTabSliceList.setItem(i, 2, QTableWidgetItem(str(slice.start))) # 2 = Absolute Startpoint
             self.SortTabSliceList.setItem(i, 3, QTableWidgetItem(str(slice.end))) # 3 = Absolute Endpoint
 
-    def WaveformPlot(self, audio_data, graphitem):
+    def downsample_for_plot(self, audio_data, max_points=2000, use_max=True):
         """
-        Plot the waveform of the audio data.
+        Downsample audio data for plotting. Uses absolute maximum for each bin.
         """
-        data = audio_data
-        if data is None:
-            print("No audio data to plot.")
+
+        if not isinstance(audio_data, np.ndarray):
+            audio_data = np.array(audio_data)
+        if len(audio_data) <= max_points:
+            return audio_data
+        factor = len(audio_data) // max_points
+        trimmed = audio_data[:factor * max_points]
+        # Use absolute maximum in each bin
+        if use_max:
+            return np.abs(trimmed).reshape(-1, factor).max(axis=1)
+        else:
+            return trimmed.reshape(-1, factor).mean(axis=1)
+
+    def on_waveform_view_changed(self, object, pos_tuple):
+        # Only load and plot this segment
+
+        if object.objectName() == "SliceWaveformVisu":
+            is_slicewf = True
+        else:
+            is_slicewf = False
+
+        graph_start, graph_end = pos_tuple
+        print(f"Waveform view changed: start={graph_start}, end={graph_end}")
+
+        # Convert graph_start and graph_end (graph coordinates) to integer sample indices
+        # Here, 0 is sample 0 and 1 is the length of the audio file (normalized coordinates)
+        audio_file = self.SliceAudioFileSelect.currentText()
+        if not audio_file:
+            print("No audio file selected for waveform view.")
+            return
+        audio_obj = self.AudioNamesToObjects([audio_file])[0]
+        if not audio_obj:
+            print(f"Audio object for '{audio_file}' not found.")
             return
 
-        #audio_data = audio_data.tolist()
+        audio_length = audio_obj.length if hasattr(audio_obj, 'length') else 0
+        start_sample = int(np.clip(round(graph_start * audio_length), 0, audio_length))
+        end_sample = int(np.clip(round(graph_end * audio_length), 0, audio_length))
+
+        audio_file = self.SliceAudioFileSelect.currentText()
+        if not audio_file:
+            print("No audio file selected for waveform view.")
+            return
+        audio_obj = self.AudioNamesToObjects([audio_file])[0]
+        if not audio_obj:
+            print(f"Audio object for '{audio_file}' not found.")
+            return
+
+        audio_data = self.GetAudioData(audio_obj, start_sample, end_sample)
+        audio_data = self.downsample_for_plot(audio_data, max_points=2000, use_max=is_slicewf)
+        self.WaveformPlot(audio_data, self.SliceWaveformVisu)
+
+    def WaveformPlot(self, audio_data, graphitem, max_points=2000):
+        """
+        Plot the waveform of the audio data, downsampling if necessary.
+        """
+
+        isslicewf = False
+
+        if audio_data is None or len(audio_data) == 0:
+            print("No audio data to plot.")
+            graphitem.clear()
+            return
+
+        # Downsample for display
+        audio_data = self.downsample_for_plot(audio_data, max_points=max_points, use_max=isslicewf)
 
         start_time = 0
-        end_time = len(data)
-
+        end_time = len(audio_data)
 
         try:
-            samples = data
             graphitem.clear()
-
             graphitem.setXRange(start_time, end_time, padding=0)
-            graphitem.setYRange(-1, 1, padding=0.1)
-
-            time_axis = np.linspace(start_time, end_time, num=len(samples))
-            maax = max([max(samples), abs(min(samples))])
+            if isslicewf:
+                graphitem.setYRange(0, 1, padding=0)
+            else:
+                graphitem.setYRange(-1, 1, padding=0)
+            time_axis = np.linspace(start_time, end_time, num=len(audio_data))
+            maax = max([max(audio_data), abs(min(audio_data))])
             if maax == 0:
-                maax = 1  # let's try to not break mathematics today
-            samples = [n / maax for n in samples]
-            graphitem.plot(time_axis, samples, pen="blue")
-
-        #     # Detect pitch and update labels and inputs
-        #     pitch_difference, note = detect_pitch(samples, samplerate=44100)  # Assuming 44100 Hz sample rate
-        #     if pitch_difference is not None and note:
-        #         self.FrequencyLabel.setText(f"Pitch Difference: {pitch_difference:.2f} cents")
-        #         self.NoteLabel.setText(f"Note: {note}")
-
-        #         # Update Octave and Note inputs
-        #         note_name, octave = note[:-1], int(note[-1])  # Split note into name and octave
-        #         self.NoteSelect.setCurrentText(note_name)
-        #         self.OctaveSelect.setValue(octave)
-        #     else:
-        #         self.FrequencyLabel.setText("Pitch Difference: N/A")
-        #         self.NoteLabel.setText("Note: N/A")
-
+                maax = 1
+            audio_data = audio_data / maax  # Normalize
+            graphitem.plot(time_axis, audio_data, pen="blue")
         except Exception as e:
-            print(f"Error loading audio file: {e}")
-            graphitem.clear()  # Clear the waveform display
+            print(f"Error plotting audio file: {e}")
+            graphitem.clear()
 
     def SortTabAudioAnalysisUpdate(self):
         """
@@ -1499,18 +1546,14 @@ class Ui_MainWindow(object):
             print("Error getting audio data. -slicewaveformupdate-")
             return
 
-        # Use the selected audio file name from SLICETAB, not from Sort tab!
-        audio_data = None
-        for audio_file in AudioData:
-            if audio_file[0] == selected_audio:
-                audio_data = audio_file[1]
-                break
+        AudioData = AudioData[0][1] 
 
-        if audio_data is None:
+        if AudioData is None:
             print("Audio data for selected file not found in cache.")
             return
 
-        self.WaveformPlot(audio_data, self.SliceWaveformVisu)
+        self.WaveformPlot(AudioData, self.SliceWaveformVisu)
+        AudioData = 0
 
     def GetAudioData(self, obj, start=None, end=None):
         '''
@@ -1519,12 +1562,19 @@ class Ui_MainWindow(object):
         Returns a list of [name, audio_data] pairs.
         '''
         print(f"begin {obj}")
+        use_whole_file = False
+        if end == 0:
+            use_whole_file = True
 
         # Handle AudioFile directly
         if isinstance(obj, AudioFile):
+            
             length = obj.length
             start = start if start is not None else 0
             end = end if end is not None else length
+            if end == start:
+                use_whole_file = True
+
             if not os.path.isfile(obj.file_path):
                 print(f"File not found: {obj.file_path}")
                 return []
@@ -1534,16 +1584,21 @@ class Ui_MainWindow(object):
                         audio_end = wav_file.samples
                     else:
                         audio_end = end
+                    if use_whole_file:
+                        start = 0
+                        audio_end = wav_file.samples
+                        end = wav_file.samples
+
                     audio_data = wav_file.read_samples(audio_end)
-                    format = wav_file.format
-                    if format == 1: format = "WAVE_FORMAT_PCM"
-                    elif format == 2: format = "WAVE_FORMAT_IEEE_FLOAT"
-                    else: format = "Unknown"
+                    format = FormatIDToName(wav_file.format)
                     audio_data = self.convert_to_int16(audio_data, wav_file.bits_per_sample, format)
-                    audio_data = audio_data[start:end]
+                    if use_whole_file:
+                        audio_data
+                    else:
+                        audio_data = audio_data[start:end]
                     return [[obj.name, audio_data]]
             except Exception as e:
-                print(f"Error loading audio file {obj.name}: {e}")
+                print(f"Error loading audio file {obj.name}: {e} -getaudiodata-")
                 return []
 
         # Handle SampleGroup
@@ -1575,12 +1630,12 @@ class Ui_MainWindow(object):
                             else:
                                 audio_end = end
                             audio_data = wav_file.read_samples(audio_end)
-                            format = wav_file.format
-                            if format == 1: format = "WAVE_FORMAT_PCM"
-                            elif format == 2: format = "WAVE_FORMAT_IEEE_FLOAT"
-                            else: format = "Unknown"
+                            format = FormatIDToName(wav_file.format)
                             audio_data = self.convert_to_int16(audio_data, wav_file.bits_per_sample, format)
-                            audio_data = audio_data[start:end]
+                            if use_whole_file:
+                                audio_data
+                            else:
+                                audio_data = audio_data[start:end]
                             out.append([name, audio_data])
                     except Exception as e:
                         print(f"Error loading audio file {name}: {e}")
@@ -1591,6 +1646,9 @@ class Ui_MainWindow(object):
                     name = audio_file.name
                     for cached_audio in self.CACHEDAUDIOFILES:
                         if cached_audio[0] == name:
+                            if use_whole_file:
+                                start = 0
+                                end = len(cached_audio[1])
                             cached_audio_data = cached_audio[1][start:end]
                             out.append([name, cached_audio_data])
 
@@ -1996,57 +2054,7 @@ def GetWavInfo(file_path: str) -> tuple[int, int, int, int]:
         print(f"Error reading WAV file: {e}")
         return -1, -1, -1, -1
 
-def ConverTo16bInt(raw_data, bits_per_sample, sample_format='PCM'):
-    """
-    Convert raw audio bytes of any supported bit depth/format to 16-bit PCM.
 
-    Args:
-        raw_data (bytes): The raw audio byte stream.
-        bits_per_sample (int): Bit depth of the input data (8, 16, 24, 32, 64).
-        sample_format (str): 'PCM' or 'FLOAT'.
-
-    Returns:
-        np.ndarray: 16-bit integer numpy array.
-    """
-    if sample_format == 'WAVE_FORMAT_IEEE_FLOAT':
-        # FLOAT input: determine dtype
-        if bits_per_sample == 32:
-            dtype = np.float32
-        elif bits_per_sample == 64:
-            dtype = np.float64
-        else:
-            raise ValueError("Unsupported float bit depth")
-
-        float_data = np.frombuffer(raw_data, dtype=dtype)
-        float_data = np.clip(float_data, -1.0, 1.0)  # clip to avoid overflow
-        return (float_data * 32767).astype(np.int16)
-
-    elif sample_format == 'WAVE_FORMAT_PCM':
-        if bits_per_sample == 8:
-            # Unsigned 8-bit PCM
-            data = np.frombuffer(raw_data, dtype=np.uint8)
-            return ((data.astype(np.int16) - 128) << 8)  # Center and scale
-        elif bits_per_sample == 16:
-            return np.frombuffer(raw_data, dtype=np.int16)
-        elif bits_per_sample == 24:
-            # 24-bit PCM is unpacked manually
-            samples = np.frombuffer(raw_data, dtype=np.uint8)
-            samples = samples.reshape(-1, 3)
-            # Combine bytes (little endian): pad with sign byte
-            int32 = (samples[:, 0].astype(np.int32) |
-                     (samples[:, 1].astype(np.int32) << 8) |
-                     (samples[:, 2].astype(np.int32) << 16))
-            # Sign extension for 24-bit
-            int32 = np.where(int32 & 0x800000, int32 | ~0xFFFFFF, int32)
-            return (int32 >> 8).astype(np.int16)
-        elif bits_per_sample == 32:
-            # Convert 32-bit int to 16-bit
-            data = np.frombuffer(raw_data, dtype=np.int32)
-            return (data >> 16).astype(np.int16)
-        else:
-            raise ValueError("Unsupported PCM bit depth")
-    else:
-        raise ValueError("Unsupported sample format: must be 'PCM' or 'FLOAT'")
 
 def FastResample(samples, original_rate, target_rate):
     """
@@ -2078,6 +2086,23 @@ def FastResample(samples, original_rate, target_rate):
 
     return resampled
 
-
+def FormatIDToName(format_id):
+    """
+    Convert a format ID to a human-readable name.
+    
+    Args:
+        format_id (int): Format ID.
+    
+    Returns:
+        str: Human-readable format name.
+    """
+    if format_id == 1:
+        return "WAVE_FORMAT_PCM"
+    elif format_id == 2:
+        return "WAVE_FORMAT_ADPCM"
+    elif format_id == 3:
+        return "WAVE_FORMAT_IEEE_FLOAT"
+    else:
+        return "Unknown Format"
 
 
