@@ -1,4 +1,5 @@
 from ast import Import
+from email.mime import audio
 import pickle
 from re import U
 import sys
@@ -36,6 +37,7 @@ _current_stream = None
 NOTE_NAMES = [
     'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'
 ]
+
 
 
 class AudioFile:
@@ -124,6 +126,10 @@ class Ui_MainWindow(object):
         self.SliceTabSelectedSGroups = []
 
         self.UIDCounter = 0
+        self.SortTabWaveformLine = None
+        self.SortTabWaveformScaling = 0
+        self.WaveformZoomIn = False
+        self.sortWaveformXMax = 1
 
     def closeEvent(self, event):
         if not self.Saved:
@@ -564,6 +570,14 @@ class Ui_MainWindow(object):
         #self.SortTabSliceList.itemSelectionChanged.connect(self.update_waveform_preview)
         self.SortTabSliceList.itemSelectionChanged.connect(self.SortTabAudioAnalysisUpdate)
         SortGroupSlicesLayout.addWidget(self.SortTabSliceList)
+
+        # Add Analyze All Slices button
+        self.AnalyzeAllSlicesButton = QPushButton(self.SortGroupSlices)
+        self.AnalyzeAllSlicesButton.setObjectName(u"AnalyzeAllSlicesButton")
+        self.AnalyzeAllSlicesButton.setText("Analyze All Slices")
+        self.AnalyzeAllSlicesButton.clicked.connect(self.AnalyzeAllSlices)
+        SortGroupSlicesLayout.addWidget(self.AnalyzeAllSlicesButton)
+
         self.SortGroupSlices.setLayout(SortGroupSlicesLayout)
         SGroupFilterLayout.addWidget(self.SortGroupSlices)
         TopRowLayout.addLayout(SGroupFilterLayout, 1)
@@ -589,6 +603,8 @@ class Ui_MainWindow(object):
         self.WaveformVisu.setMouseEnabled(x=True, y=False)
         self.WaveformVisu.plotItem.setMenuEnabled(False)
         self.WaveformVisu.plotItem.setMouseEnabled(y=False)
+        self.WaveformVisu.sigXRangeChanged.connect(self.SortWaveformAdjustData)
+
         AudioPreviewContainerLayout.addWidget(self.WaveformVisu)
         self.AudioPreviewContainer.setLayout(AudioPreviewContainerLayout)
         SortAudioPreviewLayout.addWidget(self.AudioPreviewContainer)
@@ -1302,6 +1318,71 @@ class Ui_MainWindow(object):
 
         return out
 
+    def SliceAudioAnalysis(self, slice):
+        """
+        Analyze the audio slices for a given audio file.
+        """
+
+        if slice.analyzed:
+            print(f"Slice has already been analyzed.")
+            return
+
+        if not slice:
+            print("No slice provided for analysis.")
+            return
+
+        # Perform analysis on the audio object
+        print(f"Analyzing audio slices ...")
+
+        audio_files = []
+        for sgroup in slice.sample_groups:
+            if sgroup.audio_files:
+                audio_files.extend(sgroup.audio_files)
+        if not audio_files:
+            print(f"No audio files associated with slice.")
+            return
+        
+        start = slice.start
+        end = slice.end
+        if start < 0 or end <= start:
+            print(f"Invalid slice range: start={start}, end={end}.")
+            return
+
+        audio_nrg = []
+        for audio_file in audio_files:
+            #Get audio data for the slice
+            audio_data = self.GetAudioData(audio_file, start, end)[0][1]
+            if audio_data is None:
+                print(f"Failed to retrieve audio data for slice from file '{audio_file.name}'.")
+                continue
+            #sum absolute values of audio data
+            nrg = np.sum(np.abs(audio_data))
+            audio_nrg.append([audio_file,nrg])
+
+        print(audio_nrg)
+
+        #Get the audio file with the highest energy
+        if not audio_nrg:
+            print(f"No audio data found for slice.")
+            return
+        audio_nrg.sort(key=lambda x: x[1], reverse=True)
+        selected_audio = audio_nrg[0][0]
+
+        #Get note
+        selected_audio_data = self.GetAudioData(selected_audio, start, end)
+        if selected_audio_data is None:
+            print(f"Failed to retrieve audio data for selected audio '{selected_audio.name}' in slice.")
+            return
+
+        _, note = PitchDetection(selected_audio_data, selected_audio.sample_rate)
+        if note is None:
+            print(f"Failed to detect pitch for slice in audio file '{selected_audio.name}'.")
+            return
+        print(f"Detected note '{note}' for slice in audio file '{selected_audio.name}'.")
+        slice.note = note
+        slice.analyzed = True
+
+
     def SortTabSGroupFilterUpdate(self):
         """
         Populate the SortTabSGroupfilter with sgroups.
@@ -1352,7 +1433,8 @@ class Ui_MainWindow(object):
 
     def downsample_for_plot(self, audio_data, max_points=4000, use_max=True):
         """
-        Downsample audio data for plotting. Uses absolute maximum for each bin.
+        Downsample audio data for plotting. Uses absolute maximum or a custom
+        max/min selection rule for each bin.
         """
 
         if not isinstance(audio_data, np.ndarray):
@@ -1361,11 +1443,16 @@ class Ui_MainWindow(object):
             return audio_data
         factor = len(audio_data) // max_points
         trimmed = audio_data[:factor * max_points]
-        # Use absolute maximum in each bin
+
+        reshaped = trimmed.reshape(-1, factor)
+
         if use_max:
-            return np.abs(trimmed).reshape(-1, factor).max(axis=1)
+            return np.abs(reshaped).max(axis=1)
         else:
-            return trimmed.reshape(-1, factor).mean(axis=1)
+            max_vals = reshaped.max(axis=1)
+            min_vals = reshaped.min(axis=1)
+            use_max_mask = np.abs(max_vals) >= np.abs(min_vals)
+            return np.where(use_max_mask, max_vals, min_vals)
 
     def on_waveform_view_changed(self, object, pos_tuple):
         # Only load and plot this segment
@@ -1418,6 +1505,7 @@ class Ui_MainWindow(object):
             graphitem.clear()
             return
 
+
         # Downsample for display
         audio_data = self.downsample_for_plot(audio_data, max_points=max_points, use_max=isslicewf)
 
@@ -1425,18 +1513,33 @@ class Ui_MainWindow(object):
         end_time = len(audio_data)
 
         try:
-            graphitem.clear()
-            graphitem.setXRange(start_time, end_time, padding=0)
-            if isslicewf:
-                graphitem.setYRange(0, 1, padding=0)
+            if not self.WaveformZoomIn:
+                graphitem.clear()
+                graphitem.setXRange(start_time, end_time, padding=0)
+                if isslicewf:
+                    graphitem.setYRange(0, 1, padding=0)
+                else:
+                    graphitem.setYRange(-1, 1, padding=0)
+                time_axis = np.linspace(start_time, end_time, num=len(audio_data))
+                maax = max([max(audio_data), abs(min(audio_data))])
+                if maax == 0:
+                    maax = 1
+                audio_data = audio_data / maax  # Normalize
+                pen = pg.mkPen(color=(0, 0, 255), width=2)
+                self.SortTabWaveformLine = graphitem.plot(time_axis, audio_data, pen=pen, fillLevel=0, brush=(100, 100, 255, 80))
             else:
-                graphitem.setYRange(-1, 1, padding=0)
-            time_axis = np.linspace(start_time, end_time, num=len(audio_data))
-            maax = max([max(audio_data), abs(min(audio_data))])
-            if maax == 0:
-                maax = 1
-            audio_data = audio_data / maax  # Normalize
-            graphitem.plot(time_axis, audio_data, pen="blue")
+                self.WaveformZoomIn = False
+                end_time = self.sortWaveformXMax
+                time_axis = np.linspace(0, end_time, len(audio_data))
+
+                maax = max([max(audio_data), abs(min(audio_data))])
+                if maax == 0:
+                    maax = 1
+                audio_data = audio_data / maax  # Normalize
+                if self.SortTabWaveformLine is not None:
+                    self.SortTabWaveformLine.setData(time_axis, audio_data)
+
+
         except Exception as e:
             print(f"Error plotting audio file: {e}")
             graphitem.clear()
@@ -1509,7 +1612,7 @@ class Ui_MainWindow(object):
         
         start = SliceObject.start
         end = SliceObject.end
-
+        self.sortWaveformXMax = end - start
         Slice_Audio = self.GetAudioData(SliceObject, start, end)
 
         if Slice_Audio is None:
@@ -1535,17 +1638,21 @@ class Ui_MainWindow(object):
             print("Error loading audio file -sortaudiowaveformupdate2-.")
             return
 
-        self.WaveformPlot(audio_data, self.WaveformVisu)
+        plot_width_px = self.WaveformVisu.width()
+        points = plot_width_px * 2 * (self.SortTabWaveformScaling + 1)
+        print(points)
+
+
+        self.WaveformPlot(audio_data, self.WaveformVisu, points)
 
         sr = SliceObject.sample_rate if hasattr(SliceObject, 'sample_rate') else 44100
         # get note frequency
         diff, note = PitchDetection(audio_data, sr)
-        print(f"Detected note: {note}, diff: {diff:.2f} cts")
         if note is not None:
             MidiNote = MidiNoteToName(note)
 
             self.NoteLabel.setText(f"Note: {MidiNote}")
-            print(f"Detected note: {MidiNote} +-{diff:.2f} cts")
+
 
 
     def SliceAudioWaveformUpdate(self):   
@@ -1655,6 +1762,7 @@ class Ui_MainWindow(object):
                                 audio_end = end
                             audio_data = wav_file.read_samples(audio_end)
                             format = FormatIDToName(wav_file.format)
+
                             audio_data = self.convert_to_int16(audio_data, wav_file.bits_per_sample, format)
                             if use_whole_file:
                                 audio_data
@@ -1830,6 +1938,35 @@ class Ui_MainWindow(object):
         self.CACHEDAUDIOFILES.append((audio_file.name, audio_data))
         audio_data = None  # Clear the variable to free memory
         print(f"Audio file {audio_file.name} cached successfully.")
+
+    def SortWaveformAdjustData(self):
+        '''
+        Dynamically adjust the waveform data depending on zoom level.
+        '''
+        #get the number of visible points in the waveform view
+        xmin = self.WaveformVisu.plotItem.viewRange()[0][0]
+        xmax = self.WaveformVisu.plotItem.viewRange()[0][1]
+
+        scaling = abs(xmax/ self.sortWaveformXMax - xmin/ self.sortWaveformXMax) 
+        if scaling <= 0:
+            print("No visible points in waveform view.")
+            return
+        
+        scaling = np.log10(scaling)*2
+        if scaling > 0:
+            scaling = 0
+        else:
+            scaling = abs(scaling*1)
+        print(f"Waveform view log scaling: {scaling}")
+        scaling = int(scaling)
+
+        if scaling != self.SortTabWaveformScaling:
+            self.SortTabWaveformScaling = scaling
+            print(f"Adjusting waveform data with scaling factor: {self.SortTabWaveformScaling}")
+            self.WaveformZoomIn = True
+            self.SortAudioWaveformUpdate()
+
+
 
     def SliceUIDToObject(self, uid):
         """
@@ -2083,6 +2220,19 @@ class Ui_MainWindow(object):
         self.SortTabSGroupfilter.clear()
         
         self.SortTabSGroupFilterUpdate()
+
+    def AnalyzeAllSlices(self):
+        """
+        Analyze all slices in the project.
+        """
+        if not self.SLICES:
+            print("No slices to analyze.")
+            return
+        for slice in self.SLICES:
+            self.SliceAudioAnalysis(slice)
+        print("All slices analyzed.")
+        self.UpdateSortTab()
+
 def GetWavInfo(file_path: str) -> tuple[int, int, int, int]:
     """
     Extracts WAV file attributes using the PyWave module.
