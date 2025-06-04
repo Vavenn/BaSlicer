@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6 import QtCore
 from PySide6.QtMultimedia import QAudioOutput, QAudioFormat
-from PySide6.QtCore import QRect, QSettings, QMetaObject, QCoreApplication, Qt
+from PySide6.QtCore import QRect, QSettings, QMetaObject, QCoreApplication, Qt, QSize, QPoint
 from PySide6.QtGui import QCloseEvent, QAction, QFont, QIcon
 import numpy as np
 from scipy.signal import correlate
@@ -125,6 +125,13 @@ class Ui_MainWindow(object):
 
         self.UIDCounter = 0
 
+    def closeEvent(self, event):
+        if not self.Saved:
+            self.NotSavedPrompt("a")
+        self.SaveWindowSize()
+        print("Closing application...")
+        event.accept()
+
     def setupUi(self, MainWindow):
         
         DEV = True
@@ -132,6 +139,10 @@ class Ui_MainWindow(object):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
         MainWindow.resize(1227, 604)
+        
+
+        self.LoadWindowSize()
+
         self.project_file_path = ""
 
 
@@ -617,10 +628,10 @@ class Ui_MainWindow(object):
 
         # Frequency/Note labels
         FreqNoteLayout = QHBoxLayout()
-        self.FrequencyLabel = QLabel(self.SortAudioPreview)
-        self.FrequencyLabel.setObjectName(u"FrequencyLabel")
-        self.FrequencyLabel.setText("Frequency: N/A")
-        FreqNoteLayout.addWidget(self.FrequencyLabel)
+        # self.FrequencyLabel = QLabel(self.SortAudioPreview)
+        # self.FrequencyLabel.setObjectName(u"FrequencyLabel")
+        # self.FrequencyLabel.setText("Frequency: N/A")
+        # FreqNoteLayout.addWidget(self.FrequencyLabel)
         self.NoteLabel = QLabel(self.SortAudioPreview)
         self.NoteLabel.setObjectName(u"NoteLabel")
         self.NoteLabel.setText("Note: N/A")
@@ -631,20 +642,20 @@ class Ui_MainWindow(object):
         CenterLayout.addWidget(self.SortAudioPreview)
 
         # --- Add Sort Setup and Note Config under the waveform preview ---
-        self.SortSetup = QGroupBox(self.Sort)
-        self.SortSetup.setObjectName(u"SortSetup")
-        SortSetupLayout = QVBoxLayout(self.SortSetup)
-        self.LabelSortRRSelection = QLabel(self.SortSetup)
-        self.LabelSortRRSelection.setObjectName(u"LabelSortRRSelection")
-        self.LabelSortRRSelection.setText("Round Robins")
-        SortSetupLayout.addWidget(self.LabelSortRRSelection)
-        self.SortSetupRRSelection = QSpinBox(self.SortSetup)
-        self.SortSetupRRSelection.setObjectName(u"SortSetupRRSelection")
-        self.SortSetupRRSelection.setMinimum(1)
-        self.SortSetupRRSelection.setMaximum(10)
-        SortSetupLayout.addWidget(self.SortSetupRRSelection)
-        self.SortSetup.setLayout(SortSetupLayout)
-        CenterLayout.addWidget(self.SortSetup)
+        # self.SortSetup = QGroupBox(self.Sort)
+        # self.SortSetup.setObjectName(u"SortSetup")
+        # SortSetupLayout = QVBoxLayout(self.SortSetup)
+        # self.LabelSortRRSelection = QLabel(self.SortSetup)
+        # self.LabelSortRRSelection.setObjectName(u"LabelSortRRSelection")
+        # self.LabelSortRRSelection.setText("Round Robins")
+        # SortSetupLayout.addWidget(self.LabelSortRRSelection)
+        # self.SortSetupRRSelection = QSpinBox(self.SortSetup)
+        # self.SortSetupRRSelection.setObjectName(u"SortSetupRRSelection")
+        # self.SortSetupRRSelection.setMinimum(1)
+        # self.SortSetupRRSelection.setMaximum(10)
+        # SortSetupLayout.addWidget(self.SortSetupRRSelection)
+        # self.SortSetup.setLayout(SortSetupLayout)
+        # CenterLayout.addWidget(self.SortSetup)
 
         self.SortNoteConfig = QGroupBox(self.Sort)
         self.SortNoteConfig.setObjectName(u"SortNoteConfig")
@@ -817,8 +828,8 @@ class Ui_MainWindow(object):
         self.SortPreviewPlayButton.setText(QCoreApplication.translate("MainWindow", u"Play", None))
         self.SortPreviewStopButton.setText(QCoreApplication.translate("MainWindow", u"Stop", None))
         self.LabelPlaybackVolume.setText(QCoreApplication.translate("MainWindow", u"Playback Volume", None))
-        self.SortSetup.setTitle(QCoreApplication.translate("MainWindow", u"Setup", None))
-        self.LabelSortRRSelection.setText(QCoreApplication.translate("MainWindow", u"Round Robins", None))
+        # self.SortSetup.setTitle(QCoreApplication.translate("MainWindow", u"Setup", None))
+        # self.LabelSortRRSelection.setText(QCoreApplication.translate("MainWindow", u"Round Robins", None))
     # retranslateUi
 
     def Exit(self):
@@ -1339,7 +1350,7 @@ class Ui_MainWindow(object):
             self.SortTabSliceList.setItem(i, 2, QTableWidgetItem(str(slice.start))) # 2 = Absolute Startpoint
             self.SortTabSliceList.setItem(i, 3, QTableWidgetItem(str(slice.end))) # 3 = Absolute Endpoint
 
-    def downsample_for_plot(self, audio_data, max_points=2000, use_max=True):
+    def downsample_for_plot(self, audio_data, max_points=4000, use_max=True):
         """
         Downsample audio data for plotting. Uses absolute maximum for each bin.
         """
@@ -1526,6 +1537,17 @@ class Ui_MainWindow(object):
 
         self.WaveformPlot(audio_data, self.WaveformVisu)
 
+        sr = SliceObject.sample_rate if hasattr(SliceObject, 'sample_rate') else 44100
+        # get note frequency
+        diff, note = PitchDetection(audio_data, sr)
+        print(f"Detected note: {note}, diff: {diff:.2f} cts")
+        if note is not None:
+            MidiNote = MidiNoteToName(note)
+
+            self.NoteLabel.setText(f"Note: {MidiNote}")
+            print(f"Detected note: {MidiNote} +-{diff:.2f} cts")
+
+
     def SliceAudioWaveformUpdate(self):   
         selected_audio = self.SliceAudioFileSelect.currentText()
         if not selected_audio:
@@ -1554,6 +1576,8 @@ class Ui_MainWindow(object):
 
         self.WaveformPlot(AudioData, self.SliceWaveformVisu)
         AudioData = 0
+
+
 
     def GetAudioData(self, obj, start=None, end=None):
         '''
@@ -1852,6 +1876,31 @@ class Ui_MainWindow(object):
         qdarktheme.setup_theme(theme)
         settings.endGroup()
 
+    def SaveWindowSize(self):
+        """
+        Save the current window size to QSettings.
+        """
+        settings = QSettings("Vaven", "BaSlicer")
+        settings.setValue("Window/Size", self.size())
+        settings.setValue("Window/Position", self.pos())
+        print("Window size and position saved.")
+
+    def LoadWindowSize(self):
+        """
+        Load the window size and position from QSettings.
+        """
+        settings = QSettings("Vaven", "BaSlicer")
+        size = settings.value("Window/Size", QSize(800, 600))
+        position = settings.value("Window/Position", QPoint(100, 100))
+        # Use the main window if available
+        if hasattr(self, 'main_window') and self.main_window is not None:
+            self.main_window.resize(size)
+            self.main_window.move(position)
+        elif hasattr(self, 'parent') and self.parent() is not None:
+            self.parent().resize(size)
+            self.parent().move(position)
+        print("Window size and position loaded.")
+
     def UpdateEverything(self):
         """
         Update all UI elements in the main window.
@@ -2105,4 +2154,71 @@ def FormatIDToName(format_id):
     else:
         return "Unknown Format"
 
+def PitchDetection(samples, samplerate):
+    """
+    Detects the fundamental frequency (pitch) of the given audio samples using scipy.signal.correlate,
+    and returns the pitch difference in cents from the closest note.
 
+    Args:
+        samples (np.array): Audio samples (mono, normalized).
+        samplerate (int): Sample rate of the audio.
+
+    Returns:
+        tuple: Detected pitch difference in cents, and the corresponding midi note.
+    """
+    if not isinstance(samples, np.ndarray):
+        raise ValueError("Samples must be a numpy array.")
+    
+    if len(samples) <= 2:
+        return None, None
+    
+    if samplerate <= 0:
+        raise ValueError("Samplerate must be a positive integer.")
+    
+    samples = samples - np.mean(samples) #DC Offset
+    samples = samples / np.max(np.abs(samples))  # Normalize to -1 to 1
+
+    corr = correlate(samples, samples, mode='full')
+    corr = corr[len(corr)//2:]  # Keep only second half (non-negative lags)
+
+    d = np.diff(corr)
+    start = np.nonzero(d > 0)[0]
+    if len(start) == 0:
+        return None, None 
+    start = start[0]
+
+    peak = np.argmax(corr[start:]) + start
+    period = peak
+
+    if period == 0:
+        return None, None
+
+    frequency = samplerate / period
+
+    # Convert frequency to nearest MIDI note
+    midi_note = 69 + 12 * np.log2(frequency / 440.0)
+    midi_note = round(midi_note)
+
+    note_freq = 440.0 * (2 ** ((midi_note - 69) / 12.0))
+
+    cents_difference = 1200 * np.log2(frequency / note_freq)
+
+    return cents_difference, midi_note
+
+def MidiNoteToName(midi_note):
+    """
+    Convert a MIDI note number to a note name
+
+    Args:
+        midi_note (int): MIDI note number (0-127).
+
+    Returns:
+        str: Note name with octave (e.g., "C4", "A#3").
+    """
+    if midi_note < 0 or midi_note > 127:
+        return "Invalid"
+    midi_note = int(midi_note)
+    note_index = midi_note % 12
+    octave = (midi_note // 12) - 1
+    note_name = NOTE_NAMES[note_index]
+    return f"{note_name}{octave}"
