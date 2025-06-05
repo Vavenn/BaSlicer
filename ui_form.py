@@ -466,7 +466,7 @@ class Ui_MainWindow(object):
         self.labelsamplestart.setText("Sample Start")
         CutInputsLayout.addWidget(self.labelsamplestart)
 
-        self.SampleCutpointInput = ClipboardSpinBox(self.Slice, None)
+        self.SampleCutpointInput = ClipboardSpinBox(self.Slice, paste_callback=self.CutpointPasteClipboard)
         self.SampleCutpointInput.setObjectName(u"SampleCutpointInput")
         self.SampleCutpointInput.setMinimum(0)
         self.SampleCutpointInput.setMaximum(999999999)
@@ -477,7 +477,7 @@ class Ui_MainWindow(object):
         self.labelsampleend.setText("Sample End")
         CutInputsLayout.addWidget(self.labelsampleend)
 
-        self.SampleEndInput = ClipboardSpinBox(self.Slice, None)
+        self.SampleEndInput = ClipboardSpinBox(self.Slice, paste_callback=self.EndInputPasteClipboard)
         self.SampleEndInput.setObjectName(u"SampleEndInput")
         self.SampleEndInput.setMaximum(999999999)
         CutInputsLayout.addWidget(self.SampleEndInput)
@@ -603,7 +603,7 @@ class Ui_MainWindow(object):
         self.WaveformVisu.setMouseEnabled(x=True, y=False)
         self.WaveformVisu.plotItem.setMenuEnabled(False)
         self.WaveformVisu.plotItem.setMouseEnabled(y=False)
-        self.WaveformVisu.sigXRangeChanged.connect(self.SortWaveformAdjustData)
+        # self.WaveformVisu.sigXRangeChanged.connect(self.SortWaveformAdjustData)
 
         AudioPreviewContainerLayout.addWidget(self.WaveformVisu)
         self.AudioPreviewContainer.setLayout(AudioPreviewContainerLayout)
@@ -754,8 +754,8 @@ class Ui_MainWindow(object):
         self.ExportButton.setObjectName(u"ExportButton")
         self.ExportButton.setGeometry(QRect(820, 10, 100, 30))  
         self.ExportButton.setText("Export")
-        #self.ExportButton.clicked.connect(self.export_samples)
-    
+        self.ExportButton.clicked.connect(self.QuickExport)
+
         self.ExportStartOffsetBox = QSpinBox(self.Export)
         self.ExportStartOffsetBox.setObjectName(u"ExportStartOffsetBox")
         self.ExportStartOffsetBox.setGeometry(QRect(820, 50, 100, 30))  
@@ -1144,7 +1144,6 @@ class Ui_MainWindow(object):
         self.UpdateSliceTab()
 
     def AddNewSlice(self):
-        # After method, update table according to new stuff
 
         self.UIDCounter += 1
 
@@ -1243,6 +1242,26 @@ class Ui_MainWindow(object):
             if checkbox_item:
                 checkbox_item.setCheckState(Qt.CheckState.Unchecked)
         self.UpdateSelectedSGroup()
+
+
+    def CutpointPasteClipboard(self):
+        value = self.SampleCutpointInput.value()
+
+        if self.AutoClipboardCheckbox.isChecked() and (value == 0 or value == None):
+            clipboard = QApplication.clipboard()
+            clipboard_text = clipboard.text()
+            if clipboard_text.isdigit():  # Check if the clipboard value is a number
+                self.SampleCutpointInput.setValue(int(clipboard_text))
+
+    def EndInputPasteClipboard(self):
+        value = self.SampleEndInput.value()
+
+        if self.AutoClipboardCheckbox.isChecked() and (value == 0 or value == None):
+            clipboard = QApplication.clipboard()
+            clipboard_text = clipboard.text()
+            if clipboard_text.isdigit():  # Check if the clipboard value is a number
+                self.SampleEndInput.setValue(int(clipboard_text))
+
 
     def SGroupNamesToObjects(self, sgrouplist):
             """
@@ -2233,6 +2252,92 @@ class Ui_MainWindow(object):
         print("All slices analyzed.")
         self.UpdateSortTab()
 
+    def QuickExport(self):
+        """
+        Quick export of all slices to a specified directory.
+        """
+        if not self.SLICES:
+            print("No slices to export.")
+            return
+        export_dir = QFileDialog.getExistingDirectory(
+            None,
+            "Select Export Directory",
+            "",
+            QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks
+        )
+
+        #get number of files to export
+        num_files = sum(len(sgroup.audio_files) for slice in self.SLICES for sgroup in slice.sample_groups)
+
+        progress_dialog = QProgressDialog("Exporting samples...", "Cancel", 0, num_files)
+        progress_dialog.setWindowTitle("Export Progress")
+        progress_dialog.setWindowModality(Qt.WindowModality.ApplicationModal)
+        progress_dialog.setMinimumDuration(0)
+
+        if not export_dir:
+            print("Export cancelled.")
+            return
+        
+        self.ExportProgress = 0
+        for slice in self.SLICES:
+            if progress_dialog.wasCanceled():
+                print("Export canceled by user.")
+                break
+            self.ExportSlice(slice, export_dir, progress_dialog)
+        print(f"All slices exported to {export_dir}.")
+
+    def ExportSlice(self, slice, export_dir, progress_dialog):
+        """
+        Export a single slice to a specified directory.
+        """
+        if not isinstance(slice, Slice):
+            print("Invalid slice object.")
+            return
+        if not os.path.exists(export_dir):
+            print(f"Export directory does not exist: {export_dir}")
+            return
+        # Create a folder for each sample group
+        for sgroup in slice.sample_groups:
+            group_folder = os.path.join(export_dir, sgroup.name)
+            os.makedirs(group_folder, exist_ok=True)
+            for audio_file in sgroup.audio_files:
+                # Compose filename: audio file name + note + .wav
+                note_str = ""
+                if hasattr(slice, "note") and slice.note is not None:
+                    note_str = MidiNoteToName(slice.note)
+                filename = f"{audio_file.name}_{note_str}.wav"
+                file_path = os.path.join(group_folder, filename)
+                # Get audio data for this slice and audio file
+                audio_data_list = self.GetAudioData(audio_file, slice.start, slice.end)
+                if not audio_data_list or not audio_data_list[0][1] is not None:
+                    print(f"Audio data not found for {audio_file.name}")
+                    continue
+                audio_data = audio_data_list[0][1]
+                try:
+                    with PyWave.open(file_path, 'w') as wav_file:
+                        wav_file.channels = audio_file.channels
+                        wav_file.frequency = audio_file.sample_rate
+                        wav_file.bits_per_sample = audio_file.bit_depth
+                        wav_file.write(audio_data.tobytes())
+                        self.ExportProgress += 1
+                            # Update the progress dialog
+                        progress_dialog.setValue(self.ExportProgress)
+                        QApplication.processEvents()  # Allow the UI to update
+                except Exception as e:
+                    print(f"Error writing file {file_path}: {e}")
+        # try:
+        #     for sgroup in slice.sample_groups:
+        #         for audio_file in sgroup.audio_files:
+        #             file_path = os.path.join(export_dir, audio_file.name + ".wav")
+        #             with PyWave.open(file_path, 'w') as wav_file:
+        #                 wav_file.channels = audio_file.channels
+        #                 wav_file.frequency = audio_file.sample_rate
+        #                 wav_file.bits_per_sample = audio_file.bit_depth
+        #                 wav_file.write(audio_file.data.tobytes())
+        #     print(f"Slice '{slice.UID}' exported successfully to {export_dir}.")
+        # except Exception as e:
+        #     print(f"Error exporting slice '{slice.UID}': {e}")
+
 def GetWavInfo(file_path: str) -> tuple[int, int, int, int]:
     """
     Extracts WAV file attributes using the PyWave module.
@@ -2316,8 +2421,16 @@ def PitchDetection(samples, samplerate):
     Returns:
         tuple: Detected pitch difference in cents, and the corresponding midi note.
     """
+
+    if isinstance(samples, list):
+        print("Samples is a list")
+        if isinstance(samples[0][1], np.ndarray):
+            print("Converted to nparray")
+            samples = samples[0][1]
+
     if not isinstance(samples, np.ndarray):
-        raise ValueError("Samples must be a numpy array.")
+        raise ValueError(f"Samples must be a numpy array. Samples: {samples}")
+    
     
     if len(samples) <= 2:
         return None, None
