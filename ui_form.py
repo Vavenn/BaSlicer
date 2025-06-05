@@ -29,6 +29,7 @@ import pyaudio
 import contextlib
 import qdarktheme
 from memory_profiler import profile
+import wave
 
 from settings import Ui_SettingsWindow
 
@@ -1568,7 +1569,7 @@ class Ui_MainWindow(object):
         Analyze the selected slice and update the audio preview.
         """
 
-        print(self.SLICES)
+        #print(self.SLICES)
 
         selected_slice = self.SortTabSliceList.selectedIndexes()
         if not selected_slice:
@@ -1705,7 +1706,7 @@ class Ui_MainWindow(object):
 
 
 
-    def GetAudioData(self, obj, start=None, end=None):
+    def GetAudioData(self, obj, start=None, end=None, raw=False):
         '''
         Get cached audio data for the selected slice or audio file.
         Accepts either a Slice, SampleGroup, or AudioFile.
@@ -1715,6 +1716,29 @@ class Ui_MainWindow(object):
         use_whole_file = False
         if end == 0:
             use_whole_file = True
+
+        if raw == True:
+            if isinstance(obj, AudioFile):
+                try:
+                    #fuck it we just using regular wave I just want it to work
+                    with wave.open(obj.file_path, 'rb') as wav_file:
+                                                
+                        if use_whole_file:
+                            start = 0
+                            end = wav_file.getnframes()
+                        audio_data = wav_file.readframes(wav_file.getnframes())
+                        audio_data = np.frombuffer(audio_data, dtype=np.int16)
+                        if start is not None and end is not None:
+                            if start < 0 or end > len(audio_data):
+                                print(f"Invalid start/end range: start={start}, end={end}.")
+                                return []
+                            audio_data = audio_data[start:end]
+
+                        return [[obj.name, audio_data]]
+
+                except Exception as e:
+                    print(f"Error loading audio file {obj.name}: {e} -getaudiodata-")
+                    return []
 
         # Handle AudioFile directly
         if isinstance(obj, AudioFile):
@@ -1729,23 +1753,50 @@ class Ui_MainWindow(object):
                 print(f"File not found: {obj.file_path}")
                 return []
             try:
-                with PyWave.open(obj.file_path, 'r') as wav_file:
-                    if end == 0 or end > wav_file.samples:
-                        audio_end = wav_file.samples
+                with wave.open(obj.file_path, 'rb') as wav_file:
+                    n_channels = wav_file.getnchannels()
+                    sampwidth = wav_file.getsampwidth()
+                    framerate = wav_file.getframerate()
+                    n_frames = wav_file.getnframes()
+                    if end == 0 or end > n_frames:
+                        audio_end = n_frames
                     else:
                         audio_end = end
                     if use_whole_file:
                         start = 0
-                        audio_end = wav_file.samples
-                        end = wav_file.samples
+                        audio_end = n_frames
+                        end = n_frames
 
-                    audio_data = wav_file.read_samples(audio_end)
-                    format = FormatIDToName(wav_file.format)
-                    audio_data = self.convert_to_int16(audio_data, wav_file.bits_per_sample, format)
-                    if use_whole_file:
-                        audio_data
+                    wav_file.setpos(start)
+                    frames_to_read = audio_end - start
+                    audio_bytes = wav_file.readframes(frames_to_read)
+                    # Convert bytes to numpy array
+                    if sampwidth == 1:
+                        dtype = np.uint8
+                    elif sampwidth == 2:
+                        dtype = np.int16
+                    elif sampwidth == 3:
+                        # 24-bit PCM, not directly supported by numpy
+                        # Convert to int32 then shift
+                        a = np.frombuffer(audio_bytes, dtype=np.uint8)
+                        a = a.reshape(-1, 3)
+                        audio_data = (a[:, 0].astype(np.int32) |
+                                      (a[:, 1].astype(np.int32) << 8) |
+                                      (a[:, 2].astype(np.int32) << 16))
+                        # Sign extension for 24-bit
+                        audio_data = np.where(audio_data & 0x800000, audio_data | ~0xFFFFFF, audio_data)
+                        audio_data = (audio_data >> 8).astype(np.int16)
+                    elif sampwidth == 4:
+                        dtype = np.int32
                     else:
-                        audio_data = audio_data[start:end]
+                        print(f"Unsupported sample width: {sampwidth}")
+                        return []
+                    if sampwidth != 3:
+                        audio_data = np.frombuffer(audio_bytes, dtype=dtype)
+                    # If stereo, flatten to mono for consistency (optional)
+                    if n_channels > 1:
+                        audio_data = audio_data.reshape(-1, n_channels)
+                        audio_data = audio_data[:, 0]  # Take first channel
                     return [[obj.name, audio_data]]
             except Exception as e:
                 print(f"Error loading audio file {obj.name}: {e} -getaudiodata-")
@@ -1774,19 +1825,44 @@ class Ui_MainWindow(object):
                         print(f"File not found: {audio_file.file_path}")
                         continue
                     try:
-                        with PyWave.open(audio_file.file_path, 'r') as wav_file:
-                            if end == 0 or end > wav_file.samples:
-                                audio_end = wav_file.samples
+                        with wave.open(audio_file.file_path, 'rb') as wav_file:
+                            n_channels = wav_file.getnchannels()
+                            sampwidth = wav_file.getsampwidth()
+                            framerate = wav_file.getframerate()
+                            n_frames = wav_file.getnframes()
+                            if end == 0 or end > n_frames:
+                                audio_end = n_frames
                             else:
                                 audio_end = end
-                            audio_data = wav_file.read_samples(audio_end)
-                            format = FormatIDToName(wav_file.format)
-
-                            audio_data = self.convert_to_int16(audio_data, wav_file.bits_per_sample, format)
-                            if use_whole_file:
-                                audio_data
+                            wav_file.setpos(start)
+                            frames_to_read = audio_end - start
+                            audio_bytes = wav_file.readframes(frames_to_read)
+                            # Convert bytes to numpy array
+                            if sampwidth == 1:
+                                dtype = np.uint8
+                            elif sampwidth == 2:
+                                dtype = np.int16
+                            elif sampwidth == 3:
+                                # 24-bit PCM, not directly supported by numpy
+                                a = np.frombuffer(audio_bytes, dtype=np.uint8)
+                                a = a.reshape(-1, 3)
+                                audio_data = (a[:, 0].astype(np.int32) |
+                                              (a[:, 1].astype(np.int32) << 8) |
+                                              (a[:, 2].astype(np.int32) << 16))
+                                # Sign extension for 24-bit
+                                audio_data = np.where(audio_data & 0x800000, audio_data | ~0xFFFFFF, audio_data)
+                                audio_data = (audio_data >> 8).astype(np.int16)
+                            elif sampwidth == 4:
+                                dtype = np.int32
                             else:
-                                audio_data = audio_data[start:end]
+                                print(f"Unsupported sample width: {sampwidth}")
+                                continue
+                            if sampwidth != 3:
+                                audio_data = np.frombuffer(audio_bytes, dtype=dtype)
+                            # If stereo, flatten to mono for consistency (optional)
+                            if n_channels > 1:
+                                audio_data = audio_data.reshape(-1, n_channels)
+                                audio_data = audio_data[:, 0]  # Take first channel
                             out.append([name, audio_data])
                     except Exception as e:
                         print(f"Error loading audio file {name}: {e}")
@@ -1937,18 +2013,38 @@ class Ui_MainWindow(object):
         
 
         try:
-            with PyWave.open(file_path, 'r') as wav_file:
-
-                # Read the audio data
-                audio_data = wav_file.read_samples(wav_file.samples)
-                format = wav_file.format
-                if format == 1: format = "WAVE_FORMAT_PCM"
-                elif format == 2: format = "WAVE_FORMAT_IEEE_FLOAT"
-                else: format = "Unknown"
-                audio_data = self.convert_to_int16(audio_data, wav_file.bits_per_sample, format)
-                #audio_data = self.int16_to_list(audio_data)
-                #audio_data = np.frombuffer(audio_data, dtype=np.int16)
-                
+            with wave.open(file_path, 'rb') as wav_file:
+                n_channels = wav_file.getnchannels()
+                sampwidth = wav_file.getsampwidth()
+                n_frames = wav_file.getnframes()
+                wav_file.rewind()
+                audio_bytes = wav_file.readframes(n_frames)
+                # Convert bytes to numpy array
+                if sampwidth == 1:
+                    dtype = np.uint8
+                elif sampwidth == 2:
+                    dtype = np.int16
+                elif sampwidth == 3:
+                    # 24-bit PCM, not directly supported by numpy
+                    a = np.frombuffer(audio_bytes, dtype=np.uint8)
+                    a = a.reshape(-1, 3)
+                    audio_data = (a[:, 0].astype(np.int32) |
+                        (a[:, 1].astype(np.int32) << 8) |
+                        (a[:, 2].astype(np.int32) << 16))
+                    # Sign extension for 24-bit
+                    audio_data = np.where(audio_data & 0x800000, audio_data | ~0xFFFFFF, audio_data)
+                    audio_data = (audio_data >> 8).astype(np.int16)
+                elif sampwidth == 4:
+                    dtype = np.int32
+                else:
+                    print(f"Unsupported sample width: {sampwidth}")
+                    return
+                if sampwidth != 3:
+                    audio_data = np.frombuffer(audio_bytes, dtype=dtype)
+                # If stereo, flatten to mono for consistency (optional)
+                if n_channels > 1:
+                    audio_data = audio_data.reshape(-1, n_channels)
+                    audio_data = audio_data[:, 0]  # Take first channel
         except Exception as e:
             print(f"Error loading audio file: {e}")
             return
@@ -2300,29 +2396,19 @@ class Ui_MainWindow(object):
         for sgroup in slice.sample_groups:
             group_folder = os.path.join(export_dir, sgroup.name)
             os.makedirs(group_folder, exist_ok=True)
+
             for audio_file in sgroup.audio_files:
-                # Compose filename: audio file name + note + .wav
+                # Compose filename: audio file name + note + uid .wav
                 note_str = ""
                 if hasattr(slice, "note") and slice.note is not None:
                     note_str = MidiNoteToName(slice.note)
-                filename = f"{audio_file.name}_{note_str}.wav"
+                filename = f"{audio_file.name}_{note_str}_{slice.UID}.wav"
                 file_path = os.path.join(group_folder, filename)
-                # Get audio data for this slice and audio file
-                audio_data_list = self.GetAudioData(audio_file, slice.start, slice.end)
-                if not audio_data_list or not audio_data_list[0][1] is not None:
-                    print(f"Audio data not found for {audio_file.name}")
-                    continue
-                audio_data = audio_data_list[0][1]
                 try:
-                    with PyWave.open(file_path, 'w') as wav_file:
-                        wav_file.channels = audio_file.channels
-                        wav_file.frequency = audio_file.sample_rate
-                        wav_file.bits_per_sample = audio_file.bit_depth
-                        wav_file.write(audio_data.tobytes())
-                        self.ExportProgress += 1
-                            # Update the progress dialog
-                        progress_dialog.setValue(self.ExportProgress)
-                        QApplication.processEvents()  # Allow the UI to update
+                    ExtractAudioRange(audio_file, slice.start, slice.end, file_path)
+                    self.ExportProgress += 1
+                    progress_dialog.setValue(self.ExportProgress)
+                    QApplication.processEvents()
                 except Exception as e:
                     print(f"Error writing file {file_path}: {e}")
         # try:
@@ -2485,3 +2571,38 @@ def MidiNoteToName(midi_note):
     octave = (midi_note // 12) - 1
     note_name = NOTE_NAMES[note_index]
     return f"{note_name}{octave}"
+
+def ExtractAudioRange(audio_file, start, end, output_file):
+    """
+    Extract a range of audio from an input file and save it to a new output file.
+    
+    Args:
+        input_file (str): Path to the input audio file.
+        start_idx (int): The start sample index.
+        end_idx (int): The end sample index.
+        output_file (str): Path where the new audio file should be saved.
+    """
+    with wave.open(audio_file.file_path, 'rb') as in_wav:
+        # Get parameters from the original file (channel, sample width, etc.)
+        params = in_wav.getparams()
+
+        # Ensure the indices are within the file's length
+        num_samples = params.nframes
+        if start < 0 or end > num_samples or start >= end:
+            raise ValueError("Invalid start or end index")
+
+        # Set the position to the start index
+        in_wav.setpos(start)
+
+        # Read the specified range of audio frames
+        audio_data = in_wav.readframes(end - start)
+
+        # Open the output file in write-binary mode
+        with wave.open(output_file, 'wb') as out_wav:
+            # Set the same parameters (no conversion to keep original data)
+            out_wav.setparams(params)
+
+            # Write the extracted audio data to the new file
+            out_wav.writeframes(audio_data)
+
+    print(f"Audio range extracted and saved to: {output_file}")
