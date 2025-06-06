@@ -77,7 +77,7 @@ class AudioSample:
         self.channels = len(self.samples)
 
 class Slice:
-    def __init__(self, start, end, sample_groups, analyzed=False, note=None, rr=None, UID=None):
+    def __init__(self, start, end, sample_groups, analyzed=False, note=None, rr=None, UID=None, Attack = None):
         self.start = start
         self.end = end
         self.sample_groups = sample_groups 
@@ -85,6 +85,7 @@ class Slice:
         self.note = note
         self.rr = rr
         self.UID = UID
+        self.Attack = Attack 
 
     def __repr__(self):
         return f"Slice({self.start}, {self.end}, {self.sample_groups})"
@@ -591,6 +592,26 @@ class Ui_MainWindow(object):
         self.SortAudioPreview.setObjectName(u"SortAudioPreview")
         SortAudioPreviewLayout = QVBoxLayout(self.SortAudioPreview)
 
+        TopButtonsLayout = QHBoxLayout()
+        SortAudioPreviewLayout.addLayout(TopButtonsLayout)
+
+        self.HQWaveformCheckbox = QCheckBox(self.SortAudioPreview)
+        self.HQWaveformCheckbox.setObjectName(u"HQWaveformCheckbox")
+        self.HQWaveformCheckbox.setText("High Quality Waveform Display")
+        TopButtonsLayout.addWidget(self.HQWaveformCheckbox)
+
+        self.SetAttackModeCheckbox = QCheckBox(self.SortAudioPreview)
+        self.SetAttackModeCheckbox.setObjectName(u"SetAttackModeButton")
+        self.SetAttackModeCheckbox.setText("Set Attack Mode")
+        TopButtonsLayout.addWidget(self.SetAttackModeCheckbox)
+        self.SetAttackModeCheckbox.clicked.connect(self.AttackSetupMode)
+
+        self.ValidateAttackPlacement = QPushButton(self.SortAudioPreview)
+        self.ValidateAttackPlacement.setObjectName(u"ValidateAttackPlacement")
+        self.ValidateAttackPlacement.setText("Validate Attack Placement")
+        TopButtonsLayout.addWidget(self.ValidateAttackPlacement)
+        self.ValidateAttackPlacement.clicked.connect(self.ValidateAttackPosition)
+
         self.AudioPreviewContainer = QWidget(self.SortAudioPreview)
         AudioPreviewContainerLayout = QVBoxLayout(self.AudioPreviewContainer)
         self.WaveformVisu = pg.PlotWidget(self.AudioPreviewContainer)
@@ -604,6 +625,17 @@ class Ui_MainWindow(object):
         self.WaveformVisu.setMouseEnabled(x=True, y=False)
         self.WaveformVisu.plotItem.setMenuEnabled(False)
         self.WaveformVisu.plotItem.setMouseEnabled(y=False)
+        self.WaveformVisu.sigXRangeChanged.connect(self.StaticRedLineUpdate)
+
+        self.FixedWaveformMarker = pg.InfiniteLine(
+            pos=0, angle=90, movable=False, pen=pg.mkPen('r', width=2)
+        )
+        self.WaveformVisu.addItem(self.FixedWaveformMarker)
+
+        self.AttackMarker = pg.InfiniteLine(
+            pos=0, angle=90, movable=False, pen=pg.mkPen('r', width=1)
+        )
+        self.WaveformVisu.addItem(self.AttackMarker)
         # self.WaveformVisu.sigXRangeChanged.connect(self.SortWaveformAdjustData)
 
         AudioPreviewContainerLayout.addWidget(self.WaveformVisu)
@@ -950,6 +982,12 @@ class Ui_MainWindow(object):
             print("Error: One or more slices are missing the UID attribute.")
             self.UIDCounter = 1
 
+        # Add attack attribute to slices if missing
+        for slice in self.SLICES:
+            if not hasattr(slice, 'Attack'):
+                slice.Attack = 0
+
+
         # Update the UI with loaded data
         self.UpdateEverything()
 
@@ -1176,7 +1214,7 @@ class Ui_MainWindow(object):
             selected_groups = []
 
         # Create a new slice
-        new_slice = Slice(startpoint, endpoint, selected_groups, False, None, None, self.UIDCounter)
+        new_slice = Slice(startpoint, endpoint, selected_groups, False, None, None, self.UIDCounter, 0)
 
         self.SLICES.append(new_slice)
         print("SLICES: ", self.SLICES)
@@ -1513,7 +1551,7 @@ class Ui_MainWindow(object):
         audio_data = self.downsample_for_plot(audio_data, max_points=2000, use_max=is_slicewf)
         self.WaveformPlot(audio_data, self.SliceWaveformVisu)
 
-    def WaveformPlot(self, audio_data, graphitem, max_points=2000):
+    def WaveformPlot(self, audio_data, graphitem, max_points=2000, hq=False):
         """
         Plot the waveform of the audio data, downsampling if necessary.
         """
@@ -1522,11 +1560,14 @@ class Ui_MainWindow(object):
 
         if audio_data is None or len(audio_data) == 0:
             print("No audio data to plot.")
-            graphitem.clear()
+            graphitem.removeItem(self.SortTabWaveformLine)
             return
 
 
         # Downsample for display
+        if hq:
+            max_points = max_points * 16
+
         audio_data = self.downsample_for_plot(audio_data, max_points=max_points, use_max=isslicewf)
 
         start_time = 0
@@ -1534,7 +1575,7 @@ class Ui_MainWindow(object):
 
         try:
             if not self.WaveformZoomIn:
-                graphitem.clear()
+                graphitem.removeItem(self.SortTabWaveformLine)
                 graphitem.setXRange(start_time, end_time, padding=0)
                 if isslicewf:
                     graphitem.setYRange(0, 1, padding=0)
@@ -1562,7 +1603,7 @@ class Ui_MainWindow(object):
 
         except Exception as e:
             print(f"Error plotting audio file: {e}")
-            graphitem.clear()
+            graphitem.removeItem(self.SortTabWaveformLine)
 
     def SortTabAudioAnalysisUpdate(self):
         """
@@ -1633,22 +1674,24 @@ class Ui_MainWindow(object):
         start = SliceObject.start
         end = SliceObject.end
         self.sortWaveformXMax = end - start
-        Slice_Audio = self.GetAudioData(SliceObject, start, end)
-
-        if Slice_Audio is None:
-            print("Error getting audio data. -sortwaveformupdate-")
-            return
+        
+        
 
         #get selected audio file
         selected_audio = self.SortPreviewAudioSelect.currentText()
+        if not selected_audio:
+            print("No audio file selected for waveform update.")
+            return
+        #get audio obj
+        Audio_Obj = self.AudioNamesToObjects([selected_audio])
+        if not Audio_Obj:
+            print(f"Audio object for '{selected_audio}' not found.")
+            return
+        Audio_Obj = Audio_Obj[0]
 
-        #get audio data from selected name
+        #get audio data
+        audio_data = self.GetAudioData(Audio_Obj, start, end)[0][1]
 
-        audio_data = None
-        for audio_file in Slice_Audio:
-            if audio_file[0] == selected_audio:
-                audio_data = audio_file[1]
-                break
 
         #apply the slice range to the audio data
         start = SliceObject.start
@@ -1660,10 +1703,14 @@ class Ui_MainWindow(object):
 
         plot_width_px = self.WaveformVisu.width()
         points = plot_width_px * 2 * (self.SortTabWaveformScaling + 1)
-        print(points)
+        # print(points)
 
+        
 
-        self.WaveformPlot(audio_data, self.WaveformVisu, points)
+        self.WaveformPlot(audio_data, self.WaveformVisu, points, hq = self.HQWaveformCheckbox.isChecked())
+
+        #place attack marker
+        self.PlaceAttackMarker()
 
         sr = SliceObject.sample_rate if hasattr(SliceObject, 'sample_rate') else 44100
         # get note frequency
@@ -2152,6 +2199,86 @@ class Ui_MainWindow(object):
             self.parent().resize(size)
             self.parent().move(position)
         print("Window size and position loaded.")
+
+    def AttackSetupMode(self):
+        """
+        Set up the attack mode for the waveform view.
+        """
+        Enabled = self.SetAttackModeCheckbox.isChecked()
+        if Enabled:
+            print("Attack setup mode enabled.")
+            self.FixedWaveformMarker.setVisible(True)
+
+        self.AttackMarker.setPos(0)
+        self.AttackMarker.setVisible(True)
+
+    def PlaceAttackMarker(self):
+        """
+        Place the attack marker at the current playback position.
+        """
+        selected_slice = self.SortTabSliceList.selectedIndexes()
+        if not selected_slice:
+            print("No slice selected.")
+            return
+        selected_row = selected_slice[0].row()
+        uid_text = self.SortTabSliceList.item(selected_row, 0).text()
+        try:
+            uid = int(uid_text)
+        except (TypeError, ValueError):
+            print(f"Invalid UID value: {uid_text}")
+            return
+        SliceObject = self.SliceUIDToObject(uid)
+        print("Selected Slice: ", SliceObject)
+        if not SliceObject:
+            print("No slice object found.")
+            return
+
+        attack_pos = SliceObject.Attack
+        if attack_pos is not None:
+            self.AttackMarker.setPos(attack_pos)
+            self.AttackMarker.setVisible(True)
+            print(f"Attack marker placed at {attack_pos}.")
+        else:
+            print(f"No attack position set.")
+            self.AttackMarker.setVisible(False)
+
+    def StaticRedLineUpdate(self):
+        if self.SetAttackModeCheckbox.isChecked():
+            graph_x_range = self.WaveformVisu.plotItem.viewRange()[0]
+            test_pos = graph_x_range[0] + (graph_x_range[1] - graph_x_range[0]) / 2
+            self.FixedWaveformMarker.setPos(test_pos)
+            self.FixedWaveformMarker.setVisible(True)
+        else:
+            self.FixedWaveformMarker.setVisible(False)
+
+    def ValidateAttackPosition(self):
+        selected_slice = self.SortTabSliceList.selectedIndexes()
+        if not selected_slice:
+            print("No slice selected.")
+            return
+        selected_row = selected_slice[0].row()
+        uid_text = self.SortTabSliceList.item(selected_row, 0).text()
+        try:
+            uid = int(uid_text)
+        except (TypeError, ValueError):
+            print(f"Invalid UID value: {uid_text}")
+            return
+        SliceObject = self.SliceUIDToObject(uid)
+        print("Selected Slice: ", SliceObject)
+        if not SliceObject:
+            print("No slice object found.")
+            return
+        
+        attack_pos = self.FixedWaveformMarker.pos().x()
+        # convert pos to sample index
+        
+        #                                                           STUFF HERE YOOOOOO
+
+        if attack_pos < SliceObject.start or attack_pos > SliceObject.end:
+            print(f"Attack position {attack_pos} is out of bounds for slice {uid}.")
+            return
+        SliceObject.Attack = attack_pos
+        print(f"Attack position set to {attack_pos} for slice {uid}.")
 
     def UpdateEverything(self):
         """
