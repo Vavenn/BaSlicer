@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
 from PySide6 import QtCore
 from PySide6.QtMultimedia import QAudioOutput, QAudioFormat
 from PySide6.QtCore import QRect, QSettings, QMetaObject, QCoreApplication, Qt, QSize, QPoint
-from PySide6.QtGui import QCloseEvent, QAction, QFont, QIcon
+from PySide6.QtGui import QCloseEvent, QAction, QFont, QIcon, QShortcut, QKeySequence
 import numpy as np
 from scipy.signal import correlate
 import pyqtgraph as pg
@@ -128,10 +128,13 @@ class Ui_MainWindow(object):
         self.SliceTabSelectedSGroups = []
 
         self.UIDCounter = 0
-        self.SortTabWaveformLine = None
+
         self.SortTabWaveformScaling = 0
         self.WaveformZoomIn = False
         self.sortWaveformXMax = 1
+        self.SortWaveformLines = []
+        self.SortCurrentAudioData = None
+        self.SortTabWaveformYScaling = 1
 
     def closeEvent(self, event):
         if not self.Saved:
@@ -611,12 +614,31 @@ class Ui_MainWindow(object):
         self.ValidateAttackPlacement.setText("Validate Attack Placement")
         TopButtonsLayout.addWidget(self.ValidateAttackPlacement)
         self.ValidateAttackPlacement.clicked.connect(self.ValidateAttackPosition)
+        # Keyboard shortcut for ValidateAttackPosition (A)aaa
+        self.Sort.setFocusPolicy(Qt.StrongFocus)
+        self.attackshortcut = QShortcut(QKeySequence("A"), MainWindow)
+        self.attackshortcut.setContext(Qt.WindowShortcut) 
+        self.attackshortcut.activated.connect(self.ValidateAttackPosition)
+
+        self.ShowExtraWaveformCheckbox = QCheckBox(self.SortAudioPreview)
+        self.ShowExtraWaveformCheckbox.setObjectName(u"ShowExtraWaveformCheckbox")
+        self.ShowExtraWaveformCheckbox.setText("Show Extra Waveform")
+        TopButtonsLayout.addWidget(self.ShowExtraWaveformCheckbox)
+        self.ShowExtraWaveformCheckbox.clicked.connect(self.SortAudioWaveformUpdate)
+
+        self.nextsliceshortcut = QShortcut(QKeySequence("D"), MainWindow)
+        self.nextsliceshortcut.setContext(Qt.WindowShortcut)
+        self.nextsliceshortcut.activated.connect(self.SortTabNextSlice)
+
+        self.previoussliceshortcut = QShortcut(QKeySequence("S"), MainWindow)
+        self.previoussliceshortcut.setContext(Qt.WindowShortcut)
+        self.previoussliceshortcut.activated.connect(self.SortTabPreviousSlice)
 
         self.AudioPreviewContainer = QWidget(self.SortAudioPreview)
         AudioPreviewContainerLayout = QVBoxLayout(self.AudioPreviewContainer)
         self.WaveformVisu = pg.PlotWidget(self.AudioPreviewContainer)
         self.WaveformVisu.setObjectName(u"AudioPreviewPlaceholder")
-        self.WaveformVisu.setBackground("lightgray")
+        self.WaveformVisu.setBackground('#101012')
         self.WaveformVisu.showGrid(x=False, y=False)
         self.WaveformVisu.getPlotItem().hideAxis("bottom")
         self.WaveformVisu.getPlotItem().hideAxis("left")
@@ -626,6 +648,7 @@ class Ui_MainWindow(object):
         self.WaveformVisu.plotItem.setMenuEnabled(False)
         self.WaveformVisu.plotItem.setMouseEnabled(y=False)
         self.WaveformVisu.sigXRangeChanged.connect(self.StaticRedLineUpdate)
+        self.WaveformVisu.sigXRangeChanged.connect(self.SortWaveformAdjustData)
 
         self.FixedWaveformMarker = pg.InfiniteLine(
             pos=0, angle=90, movable=False, pen=pg.mkPen('r', width=2)
@@ -633,7 +656,8 @@ class Ui_MainWindow(object):
         self.WaveformVisu.addItem(self.FixedWaveformMarker)
 
         self.AttackMarker = pg.InfiniteLine(
-            pos=0, angle=90, movable=False, pen=pg.mkPen('r', width=1)
+            pos=0, angle=90, movable=False, 
+            pen=pg.mkPen('orange', width=4, style=QtCore.Qt.DotLine)
         )
         self.WaveformVisu.addItem(self.AttackMarker)
         # self.WaveformVisu.sigXRangeChanged.connect(self.SortWaveformAdjustData)
@@ -1551,7 +1575,7 @@ class Ui_MainWindow(object):
         audio_data = self.downsample_for_plot(audio_data, max_points=2000, use_max=is_slicewf)
         self.WaveformPlot(audio_data, self.SliceWaveformVisu)
 
-    def WaveformPlot(self, audio_data, graphitem, max_points=2000, hq=False):
+    def WaveformPlot(self, audio_data, graphitem, max_points=2000, hq=False, draw_extra=False):
         """
         Plot the waveform of the audio data, downsampling if necessary.
         """
@@ -1560,50 +1584,74 @@ class Ui_MainWindow(object):
 
         if audio_data is None or len(audio_data) == 0:
             print("No audio data to plot.")
-            graphitem.removeItem(self.SortTabWaveformLine)
+            for line in self.SortWaveformLines:
+                if line is not None:
+                    graphitem.removeItem(line)
             return
 
 
         # Downsample for display
         if hq:
             max_points = max_points * 16
+        if draw_extra:
+            max_points = max_points * 3
 
         audio_data = self.downsample_for_plot(audio_data, max_points=max_points, use_max=isslicewf)
 
-        start_time = 0
-        end_time = len(audio_data)
-
         try:
             if not self.WaveformZoomIn:
-                graphitem.removeItem(self.SortTabWaveformLine)
-                graphitem.setXRange(start_time, end_time, padding=0)
+                for line in self.SortWaveformLines:
+                    graphitem.removeItem(line)
+
                 if isslicewf:
                     graphitem.setYRange(0, 1, padding=0)
                 else:
                     graphitem.setYRange(-1, 1, padding=0)
-                time_axis = np.linspace(start_time, end_time, num=len(audio_data))
-                maax = max([max(audio_data), abs(min(audio_data))])
-                if maax == 0:
-                    maax = 1
-                audio_data = audio_data / maax  # Normalize
-                pen = pg.mkPen(color=(0, 0, 255), width=2)
-                self.SortTabWaveformLine = graphitem.plot(time_axis, audio_data, pen=pen, fillLevel=0, brush=(100, 100, 255, 80))
+
+                if draw_extra:
+                    time_axis = np.linspace(-1, 2, num=len(audio_data))
+                else:
+                    time_axis = np.linspace(0, 1, num=len(audio_data))
+                bluepen = pg.mkPen(color=(0, 0, 255), width=2)
+                greenpen = pg.mkPen(color=(0, 200, 0), width=2)
+                # Draw blue for range 0 to 1, green for the rest
+                if draw_extra:
+                    # Find indices for 0 to 1 range
+                    total_points = len(audio_data)
+                    zero_idx = int(total_points * (1/3))
+                    one_idx = int(total_points * (2/3))
+                    # Plot green for -1 to 0 and 1 to 2
+                    if zero_idx > 0:
+                        PosLine = graphitem.plot(time_axis[:(zero_idx+1)], audio_data[:(zero_idx+1)], pen=greenpen, fillLevel=0, brush=(100, 255, 100, 80))
+                        self.SortWaveformLines.append(PosLine)
+                    if one_idx < total_points:
+                        NegLine = graphitem.plot(time_axis[(one_idx-1):], audio_data[(one_idx-1):], pen=greenpen, fillLevel=0, brush=(100, 255, 100, 80))
+                        self.SortWaveformLines.append(NegLine)
+                    # Plot blue for 0 to 1
+                    MainLine = graphitem.plot(time_axis[zero_idx:one_idx], audio_data[zero_idx:one_idx], pen=bluepen, fillLevel=0, brush=(100, 100, 255, 80))
+                    self.SortWaveformLines.append(MainLine)
+                else:
+                    MainLine = graphitem.plot(time_axis, audio_data, pen=bluepen, fillLevel=0, brush=(100, 100, 255, 80))
+                    self.SortWaveformLines.append(MainLine)
+                #zoom to fit
+                graphitem.setXRange(0, 1, padding=0)
+                self.PlaceAttackMarker()
             else:
                 self.WaveformZoomIn = False
-                end_time = self.sortWaveformXMax
-                time_axis = np.linspace(0, end_time, len(audio_data))
+                time_axis = np.linspace(0, 1, len(audio_data))
+                for line in self.SortWaveformLines:
+                    if line is not None:
+                        line.setData(time_axis, audio_data)
+                self.PlaceAttackMarker()
 
-                maax = max([max(audio_data), abs(min(audio_data))])
-                if maax == 0:
-                    maax = 1
-                audio_data = audio_data / maax  # Normalize
-                if self.SortTabWaveformLine is not None:
-                    self.SortTabWaveformLine.setData(time_axis, audio_data)
-
+                # Update the waveform view range
+                graphitem.setXRange(0, 1, padding=0)
 
         except Exception as e:
             print(f"Error plotting audio file: {e}")
-            graphitem.removeItem(self.SortTabWaveformLine)
+            for line in self.SortWaveformLines:
+                graphitem.removeItem(line)
+
 
     def SortTabAudioAnalysisUpdate(self):
         """
@@ -1673,9 +1721,8 @@ class Ui_MainWindow(object):
         
         start = SliceObject.start
         end = SliceObject.end
-        self.sortWaveformXMax = end - start
-        
-        
+        length = end - start
+
 
         #get selected audio file
         selected_audio = self.SortPreviewAudioSelect.currentText()
@@ -1689,11 +1736,45 @@ class Ui_MainWindow(object):
             return
         Audio_Obj = Audio_Obj[0]
 
+        #check if draw extra
+
+        draw_extra = False
+        if self.ShowExtraWaveformCheckbox.isChecked():
+            draw_extra = True
+            start = start - length
+            end = end + length
+
+    
+        print(f"Adjusted Start: {start}, Adjusted End: {end}")
+
         #get audio data
-        audio_data = self.GetAudioData(Audio_Obj, start, end)[0][1]
+        audio_data = self.GetAudioData(Audio_Obj, start, end)
+        print(f"Audio Data: {audio_data}")
+        if audio_data is not None and len(audio_data) > 0:
+            audio_data = audio_data[0][1]
+
+        # Calculate maax only for the 0-1 range (main segment)
+        if draw_extra:
+            total_points = len(audio_data)
+            zero_idx = int(total_points * (1/3))
+            one_idx = int(total_points * (2/3))
+            main_segment = audio_data[zero_idx:one_idx]
+            if len(main_segment) > 0:
+                maax = max([max(main_segment), abs(min(main_segment))])
+            else:
+                maax = 1
+        else:
+            maax = max([max(audio_data), abs(min(audio_data))])
+        if maax == 0:
+            maax = 1
+
+        self.SortTabWaveformYScaling = maax
+
+        # normalize audio data
+
+        audio_data = audio_data / maax
 
 
-        #apply the slice range to the audio data
         start = SliceObject.start
         end = SliceObject.end
 
@@ -1705,9 +1786,17 @@ class Ui_MainWindow(object):
         points = plot_width_px * 2 * (self.SortTabWaveformScaling + 1)
         # print(points)
 
-        
+        self.SortCurrentAudioData = audio_data
 
-        self.WaveformPlot(audio_data, self.WaveformVisu, points, hq = self.HQWaveformCheckbox.isChecked())
+
+
+        self.WaveformPlot(
+            audio_data, 
+            self.WaveformVisu, 
+            points, 
+            hq = self.HQWaveformCheckbox.isChecked(), 
+            draw_extra=self.ShowExtraWaveformCheckbox.isChecked()
+            )
 
         #place attack marker
         self.PlaceAttackMarker()
@@ -1759,7 +1848,6 @@ class Ui_MainWindow(object):
         Accepts either a Slice, SampleGroup, or AudioFile.
         Returns a list of [name, audio_data] pairs.
         '''
-        print(f"begin {obj}")
         use_whole_file = False
         if end == 0:
             use_whole_file = True
@@ -1776,10 +1864,23 @@ class Ui_MainWindow(object):
                         audio_data = wav_file.readframes(wav_file.getnframes())
                         audio_data = np.frombuffer(audio_data, dtype=np.int16)
                         if start is not None and end is not None:
-                            if start < 0 or end > len(audio_data):
-                                print(f"Invalid start/end range: start={start}, end={end}.")
+                            
+                            if start < 0:
+                                print("neg start begin")
+                                # Pad with zeros for negative start
+                                pad_len = abs(start)
+                                if end > len(audio_data):
+                                    print(f"Invalid end range: end={end}.")
+                                    return []
+                                audio_data = np.concatenate([np.zeros(pad_len, dtype=audio_data.dtype), audio_data])
+                            elif end > len(audio_data):
+                                print(f"Invalid end range: end={end}.")
                                 return []
-                            audio_data = audio_data[start:end]
+                            else:
+                                print("normal start end")
+                                audio_data = audio_data[start:end]
+
+                        print(f"Audio Data: FFEUR {audio_data}")
 
                         return [[obj.name, audio_data]]
 
@@ -1814,37 +1915,71 @@ class Ui_MainWindow(object):
                         audio_end = n_frames
                         end = n_frames
 
-                    wav_file.setpos(start)
-                    frames_to_read = audio_end - start
-                    audio_bytes = wav_file.readframes(frames_to_read)
-                    # Convert bytes to numpy array
-                    if sampwidth == 1:
-                        dtype = np.uint8
-                    elif sampwidth == 2:
-                        dtype = np.int16
-                    elif sampwidth == 3:
-                        # 24-bit PCM, not directly supported by numpy
-                        # Convert to int32 then shift
-                        a = np.frombuffer(audio_bytes, dtype=np.uint8)
-                        a = a.reshape(-1, 3)
-                        audio_data = (a[:, 0].astype(np.int32) |
-                                      (a[:, 1].astype(np.int32) << 8) |
-                                      (a[:, 2].astype(np.int32) << 16))
-                        # Sign extension for 24-bit
-                        audio_data = np.where(audio_data & 0x800000, audio_data | ~0xFFFFFF, audio_data)
-                        audio_data = (audio_data >> 8).astype(np.int16)
-                    elif sampwidth == 4:
-                        dtype = np.int32
+                    if start < 0:
+                        pad_len = abs(start)
+                        wav_file.setpos(0)
+                        frames_to_read = audio_end
+                        audio_bytes = wav_file.readframes(frames_to_read)
+                        # Convert bytes to numpy array
+                        if sampwidth == 1:
+                            dtype = np.uint8
+                        elif sampwidth == 2:
+                            dtype = np.int16
+                        elif sampwidth == 3:
+                            a = np.frombuffer(audio_bytes, dtype=np.uint8)
+                            a = a.reshape(-1, 3)
+                            audio_data = (a[:, 0].astype(np.int32) |
+                                          (a[:, 1].astype(np.int32) << 8) |
+                                          (a[:, 2].astype(np.int32) << 16))
+                            audio_data = np.where(audio_data & 0x800000, audio_data | ~0xFFFFFF, audio_data)
+                            audio_data = (audio_data >> 8).astype(np.int16)
+                        elif sampwidth == 4:
+                            dtype = np.int32
+                        else:
+                            print(f"Unsupported sample width: {sampwidth}")
+                            return []
+                        if sampwidth != 3:
+                            audio_data = np.frombuffer(audio_bytes, dtype=dtype)
+                        if n_channels > 1:
+                            audio_data = audio_data.reshape(-1, n_channels)
+                            audio_data = audio_data[:, 0]
+                        # Pad with zeros at the beginning
+                        audio_data = np.concatenate([np.zeros(pad_len, dtype=audio_data.dtype), audio_data])
+                        # Only keep up to (audio_end - start) samples
+                        audio_data = audio_data[:audio_end - start]
+                        return [[obj.name, audio_data]]
                     else:
-                        print(f"Unsupported sample width: {sampwidth}")
-                        return []
-                    if sampwidth != 3:
-                        audio_data = np.frombuffer(audio_bytes, dtype=dtype)
-                    # If stereo, flatten to mono for consistency (optional)
-                    if n_channels > 1:
-                        audio_data = audio_data.reshape(-1, n_channels)
-                        audio_data = audio_data[:, 0]  # Take first channel
-                    return [[obj.name, audio_data]]
+                        wav_file.setpos(start)
+                        frames_to_read = audio_end - start
+                        audio_bytes = wav_file.readframes(frames_to_read)
+                        # Convert bytes to numpy array
+                        if sampwidth == 1:
+                            dtype = np.uint8
+                        elif sampwidth == 2:
+                            dtype = np.int16
+                        elif sampwidth == 3:
+                            # 24-bit PCM, not directly supported by numpy
+                            # Convert to int32 then shift
+                            a = np.frombuffer(audio_bytes, dtype=np.uint8)
+                            a = a.reshape(-1, 3)
+                            audio_data = (a[:, 0].astype(np.int32) |
+                                          (a[:, 1].astype(np.int32) << 8) |
+                                          (a[:, 2].astype(np.int32) << 16))
+                            # Sign extension for 24-bit
+                            audio_data = np.where(audio_data & 0x800000, audio_data | ~0xFFFFFF, audio_data)
+                            audio_data = (audio_data >> 8).astype(np.int16)
+                        elif sampwidth == 4:
+                            dtype = np.int32
+                        else:
+                            print(f"Unsupported sample width: {sampwidth}")
+                            return []
+                        if sampwidth != 3:
+                            audio_data = np.frombuffer(audio_bytes, dtype=dtype)
+                        # If stereo, flatten to mono for consistency (optional)
+                        if n_channels > 1:
+                            audio_data = audio_data.reshape(-1, n_channels)
+                            audio_data = audio_data[:, 0]  # Take first channel
+                        return [[obj.name, audio_data]]
             except Exception as e:
                 print(f"Error loading audio file {obj.name}: {e} -getaudiodata-")
                 return []
@@ -1881,6 +2016,41 @@ class Ui_MainWindow(object):
                                 audio_end = n_frames
                             else:
                                 audio_end = end
+                            # If start is negative, pad with zeros for the negative range
+                            if start < 0:
+                                pad_len = abs(start)
+                                wav_file.setpos(0)
+                                frames_to_read = audio_end
+                                audio_bytes = wav_file.readframes(frames_to_read)
+                                # Convert bytes to numpy array
+                                if sampwidth == 1:
+                                    dtype = np.uint8
+                                elif sampwidth == 2:
+                                    dtype = np.int16
+                                elif sampwidth == 3:
+                                    a = np.frombuffer(audio_bytes, dtype=np.uint8)
+                                    a = a.reshape(-1, 3)
+                                    audio_data = (a[:, 0].astype(np.int32) |
+                                                  (a[:, 1].astype(np.int32) << 8) |
+                                                  (a[:, 2].astype(np.int32) << 16))
+                                    audio_data = np.where(audio_data & 0x800000, audio_data | ~0xFFFFFF, audio_data)
+                                    audio_data = (audio_data >> 8).astype(np.int16)
+                                elif sampwidth == 4:
+                                    dtype = np.int32
+                                else:
+                                    print(f"Unsupported sample width: {sampwidth}")
+                                    continue
+                                if sampwidth != 3:
+                                    audio_data = np.frombuffer(audio_bytes, dtype=dtype)
+                                if n_channels > 1:
+                                    audio_data = audio_data.reshape(-1, n_channels)
+                                    audio_data = audio_data[:, 0]
+                                # Pad with zeros at the beginning
+                                audio_data = np.concatenate([np.zeros(pad_len, dtype=audio_data.dtype), audio_data])
+                                # Only keep up to (audio_end - start) samples
+                                audio_data = audio_data[:audio_end - start]
+                                out.append([name, audio_data])
+                                continue
                             wav_file.setpos(start)
                             frames_to_read = audio_end - start
                             audio_bytes = wav_file.readframes(frames_to_read)
@@ -2040,95 +2210,92 @@ class Ui_MainWindow(object):
         
         return int16_array.tolist()
 
-    def CacheAudioFile(self, audio_file):
-        """
-        Cache audio data for the selected audio file.
-        """
-        if self.CacheType == "LoadAllFromDrive":
-            return
-        print("Caching audio file...")
-        if type(audio_file) != AudioFile:
-            print("Invalid audio file object.")
-            return
-        print(f"Loading audio file {audio_file.name}")
-        file_path = audio_file.file_path
-
-        if not os.path.isfile(file_path):
-            print(f"File not found: {file_path}")
-            return
-
-        
-
-        try:
-            with wave.open(file_path, 'rb') as wav_file:
-                n_channels = wav_file.getnchannels()
-                sampwidth = wav_file.getsampwidth()
-                n_frames = wav_file.getnframes()
-                wav_file.rewind()
-                audio_bytes = wav_file.readframes(n_frames)
-                # Convert bytes to numpy array
-                if sampwidth == 1:
-                    dtype = np.uint8
-                elif sampwidth == 2:
-                    dtype = np.int16
-                elif sampwidth == 3:
-                    # 24-bit PCM, not directly supported by numpy
-                    a = np.frombuffer(audio_bytes, dtype=np.uint8)
-                    a = a.reshape(-1, 3)
-                    audio_data = (a[:, 0].astype(np.int32) |
-                        (a[:, 1].astype(np.int32) << 8) |
-                        (a[:, 2].astype(np.int32) << 16))
-                    # Sign extension for 24-bit
-                    audio_data = np.where(audio_data & 0x800000, audio_data | ~0xFFFFFF, audio_data)
-                    audio_data = (audio_data >> 8).astype(np.int16)
-                elif sampwidth == 4:
-                    dtype = np.int32
-                else:
-                    print(f"Unsupported sample width: {sampwidth}")
-                    return
-                if sampwidth != 3:
-                    audio_data = np.frombuffer(audio_bytes, dtype=dtype)
-                # If stereo, flatten to mono for consistency (optional)
-                if n_channels > 1:
-                    audio_data = audio_data.reshape(-1, n_channels)
-                    audio_data = audio_data[:, 0]  # Take first channel
-        except Exception as e:
-            print(f"Error loading audio file: {e}")
-            return
-
-        # Cache the audio data
-        self.CACHEDAUDIOFILES.append((audio_file.name, audio_data))
-        audio_data = None  # Clear the variable to free memory
-        print(f"Audio file {audio_file.name} cached successfully.")
-
     def SortWaveformAdjustData(self):
-        '''
+        """
         Dynamically adjust the waveform data depending on zoom level.
-        '''
-        #get the number of visible points in the waveform view
-        xmin = self.WaveformVisu.plotItem.viewRange()[0][0]
-        xmax = self.WaveformVisu.plotItem.viewRange()[0][1]
+        Plots SortCurrentAudioData with one point per pixel in the current view range.
+        Pads with zeros if xmin/xmax exceed data bounds.
+        The x-axis is normalized: 0=start, 1=end.
+        If ShowExtraWaveformCheckbox is checked, shows extra regions in green and includes audio for -1 to 0 and 1 to 2.
+        """
 
-        scaling = abs(xmax/ self.sortWaveformXMax - xmin/ self.sortWaveformXMax) 
-        if scaling <= 0:
-            print("No visible points in waveform view.")
+        if self.SortCurrentAudioData is None or len(self.SortCurrentAudioData) == 0:
             return
-        
-        scaling = np.log10(scaling)*2
-        if scaling > 0:
-            scaling = 0
+
+        view_range = self.WaveformVisu.plotItem.viewRange()[0]
+        xmin, xmax = float(view_range[0]), float(view_range[1])
+
+        show_extra = self.ShowExtraWaveformCheckbox.isChecked()
+        if show_extra:
+            plot_min, plot_max = -1.0, 2.0
         else:
-            scaling = abs(scaling*1)
-        print(f"Waveform view log scaling: {scaling}")
-        scaling = int(scaling)
+            plot_min, plot_max = 0.0, 1.0
 
-        if scaling != self.SortTabWaveformScaling:
-            self.SortTabWaveformScaling = scaling
-            print(f"Adjusting waveform data with scaling factor: {self.SortTabWaveformScaling}")
-            self.WaveformZoomIn = True
-            self.SortAudioWaveformUpdate()
+        data_len = len(self.SortCurrentAudioData)
+        plot_width_px = max(1, self.WaveformVisu.width())
 
+        # Calculate sample indices for the full plot range
+        sample_start = int(np.floor(plot_min * data_len / (plot_max - plot_min)))
+        sample_end = int(np.ceil(plot_max * data_len / (plot_max - plot_min)))
 
+        pad_left = max(0, -sample_start)
+        pad_right = max(0, sample_end - data_len)
+
+        data_start = max(0, sample_start)
+        data_end = min(data_len, sample_end)
+
+        visible_data = self.SortCurrentAudioData[data_start:data_end]
+        if pad_left > 0 or pad_right > 0:
+            visible_data = np.concatenate([
+                np.zeros(pad_left, dtype=visible_data.dtype if len(visible_data) > 0 else np.float32),
+                visible_data,
+                np.zeros(pad_right, dtype=visible_data.dtype if len(visible_data) > 0 else np.float32)
+            ])
+
+        # Downsample so we have one point per pixel
+        if len(visible_data) > plot_width_px:
+            factor = len(visible_data) // plot_width_px
+            trimmed = visible_data[:factor * plot_width_px]
+            downsampled = self.downsample_for_plot(trimmed, max_points=plot_width_px, use_max=False)
+        else:
+            downsampled = visible_data
+
+        # The x_axis must always cover the full plot range
+        x_axis = np.linspace(plot_min, plot_max, num=len(downsampled), endpoint=False)
+
+        # Clear previous lines and plot the new data
+        for line in self.SortWaveformLines:
+            self.WaveformVisu.removeItem(line)
+        self.SortWaveformLines.clear()
+
+        bluepen = pg.mkPen(color=(0, 0, 255), width=2)
+        greenpen = pg.mkPen(color=(0, 200, 0), width=2)
+
+        if show_extra:
+            total_points = len(downsampled)
+            if plot_max - plot_min == 0:
+                zero_idx = one_idx = 0
+            else:
+                zero_idx = int((0 - plot_min) / (plot_max - plot_min) * total_points)
+                one_idx = int((1 - plot_min) / (plot_max - plot_min) * total_points)
+            zero_idx = np.clip(zero_idx, 0, total_points)
+            one_idx = np.clip(one_idx, 0, total_points)
+
+            # Plot green for x < 0
+            if zero_idx > 0:
+                NegLine = self.WaveformVisu.plot(x_axis[:zero_idx], downsampled[:zero_idx], pen=greenpen, fillLevel=0, brush=(100, 255, 100, 80))
+                self.SortWaveformLines.append(NegLine)
+            # Plot blue for 0 <= x <= 1
+            if one_idx > zero_idx:
+                MainLine = self.WaveformVisu.plot(x_axis[zero_idx:one_idx], downsampled[zero_idx:one_idx], pen=bluepen, fillLevel=0, brush=(100, 100, 255, 80))
+                self.SortWaveformLines.append(MainLine)
+            # Plot green for x > 1
+            if one_idx < total_points:
+                PosLine = self.WaveformVisu.plot(x_axis[one_idx:], downsampled[one_idx:], pen=greenpen, fillLevel=0, brush=(100, 255, 100, 80))
+                self.SortWaveformLines.append(PosLine)
+        else:
+            MainLine = self.WaveformVisu.plot(x_axis, downsampled, pen=bluepen, fillLevel=0, brush=(100, 100, 255, 80))
+            self.SortWaveformLines.append(MainLine)
 
     def SliceUIDToObject(self, uid):
         """
@@ -2209,8 +2376,10 @@ class Ui_MainWindow(object):
             print("Attack setup mode enabled.")
             self.FixedWaveformMarker.setVisible(True)
 
+
         self.AttackMarker.setPos(0)
         self.AttackMarker.setVisible(True)
+
 
     def PlaceAttackMarker(self):
         """
@@ -2234,6 +2403,7 @@ class Ui_MainWindow(object):
             return
 
         attack_pos = SliceObject.Attack
+        attack_pos = attack_pos / (SliceObject.end - SliceObject.start)  # Convert to 0-1 range
         if attack_pos is not None:
             self.AttackMarker.setPos(attack_pos)
             self.AttackMarker.setVisible(True)
@@ -2252,6 +2422,11 @@ class Ui_MainWindow(object):
             self.FixedWaveformMarker.setVisible(False)
 
     def ValidateAttackPosition(self):
+        #check if Sort tab is in focus
+        if not self.Sort.isVisible():
+            print("Sort tab is not in focus.")
+            return
+
         selected_slice = self.SortTabSliceList.selectedIndexes()
         if not selected_slice:
             print("No slice selected.")
@@ -2269,16 +2444,67 @@ class Ui_MainWindow(object):
             print("No slice object found.")
             return
         
-        attack_pos = self.FixedWaveformMarker.pos().x()
+        attack_pos = self.FixedWaveformMarker.pos().x() # 0-1 range
         # convert pos to sample index
-        
-        #                                                           STUFF HERE YOOOOOO
+        print(f"Attack position: {attack_pos}.")
 
-        if attack_pos < SliceObject.start or attack_pos > SliceObject.end:
-            print(f"Attack position {attack_pos} is out of bounds for slice {uid}.")
+        min_pos = 0
+        max_pos = 1
+        if self.ShowExtraWaveformCheckbox.isChecked():
+            min_pos = -1
+            max_pos = 2
+
+        if attack_pos < min_pos:
+            print(f"Attack position cannot be less than {min_pos}.")
             return
+        if attack_pos > max_pos:
+            print(f"Attack position cannot be greater than {max_pos}.")
+            return
+
+        if self.ShowExtraWaveformCheckbox.isChecked():
+            if attack_pos < 0 and attack_pos >= -1:
+                #adjust slice start to match new attack pos
+                print(f"Attack position is negative, adjusting slice start to match new attack position.")
+                #convert to realtive sample index
+                print(f"Attack position: {attack_pos}.")
+                slice_len = SliceObject.end - SliceObject.start
+                adjust_pos = int(attack_pos * (slice_len)/3) 
+                print(f"Adjusting slice start by {adjust_pos} samples.")
+                SliceObject.start += adjust_pos
+                # update waveform view
+                self.SortAudioWaveformUpdate()
+                attack_pos = 0
+                return
+
+
+        attack_pos = int(attack_pos * (SliceObject.end - SliceObject.start)) # convert to realtive sample index
+        print(f"Converted attack position: {attack_pos}.")
+
+
+        #                                                           STUFF HERE YOOOOOO
         SliceObject.Attack = attack_pos
         print(f"Attack position set to {attack_pos} for slice {uid}.")
+        self.PlaceAttackMarker()
+
+    def PlaceAttackMarker(self):
+        selected_slice = self.SortTabSliceList.selectedIndexes()
+        if not selected_slice:
+            print("No slice selected.")
+            return
+        selected_row = selected_slice[0].row()
+        uid_text = self.SortTabSliceList.item(selected_row, 0).text()
+        try:
+            uid = int(uid_text)
+        except (TypeError, ValueError):
+            print(f"Invalid UID value: {uid_text}")
+            return
+        SliceObject = self.SliceUIDToObject(uid)
+        print("Selected Slice: ", SliceObject)
+        if not SliceObject:
+            print("No slice object found.")
+            return
+        
+        self.AttackMarker.setPos(SliceObject.Attack / (SliceObject.end - SliceObject.start))  # Convert to 0-1 range
 
     def UpdateEverything(self):
         """
@@ -2350,6 +2576,40 @@ class Ui_MainWindow(object):
         names = list(dict.fromkeys(names))
 
         self.SliceAudioFileSelect.addItems(names)
+
+    def SortTabNextSlice(self):
+        """
+        Select the next slice in the sort tab.
+        """
+        selected_slice = self.SortTabSliceList.selectedIndexes()
+        if not selected_slice:
+            print("No slice selected.")
+            return
+        selected_row = selected_slice[0].row()
+        if selected_row < self.SortTabSliceList.rowCount() - 1:
+            next_row = selected_row + 1
+            self.SortTabSliceList.setCurrentCell(next_row, 0)
+            self.SortTabSliceList.scrollToItem(self.SortTabSliceList.item(next_row, 0))
+            print(f"Selected next slice: {next_row}")
+        else:
+            print("Already at the last slice.")
+
+    def SortTabPreviousSlice(self):
+        """
+        Select the previous slice in the sort tab.
+        """
+        selected_slice = self.SortTabSliceList.selectedIndexes()
+        if not selected_slice:
+            print("No slice selected.")
+            return
+        selected_row = selected_slice[0].row()
+        if selected_row > 0:
+            previous_row = selected_row - 1
+            self.SortTabSliceList.setCurrentCell(previous_row, 0)
+            self.SortTabSliceList.scrollToItem(self.SortTabSliceList.item(previous_row, 0))
+            print(f"Selected previous slice: {previous_row}")
+        else:
+            print("Already at the first slice.")
 
     def UpdateSelectedSGroup(self):
         '''
