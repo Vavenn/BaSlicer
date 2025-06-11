@@ -16,12 +16,12 @@ from PySide6.QtWidgets import (
     QGroupBox, QLineEdit, QPushButton, QLabel, QSpinBox, QCheckBox, QComboBox, 
     QSlider, QFileDialog, QProgressDialog, QAbstractItemView, QSizePolicy, 
     QMenuBar, QMenu, QWidget, QMessageBox,
-    QVBoxLayout, QHBoxLayout, QGridLayout, QSpacerItem
+    QVBoxLayout, QHBoxLayout, QGridLayout, QSpacerItem, QGraphicsView, QGraphicsScene, QGraphicsRectItem
 )
 from PySide6 import QtCore
 from PySide6.QtMultimedia import QAudioOutput, QAudioFormat
 from PySide6.QtCore import QRect, QSettings, QMetaObject, QCoreApplication, Qt, QSize, QPoint
-from PySide6.QtGui import QCloseEvent, QAction, QFont, QIcon, QShortcut, QKeySequence
+from PySide6.QtGui import QCloseEvent, QAction, QFont, QIcon, QShortcut,QBrush, QColor, QWheelEvent, QPainter, QKeySequence
 import numpy as np
 from scipy.signal import correlate
 import pyqtgraph as pg
@@ -40,6 +40,46 @@ NOTE_NAMES = [
 ]
 
 
+class InteractiveRect(QGraphicsRectItem):
+    def __init__(self, x, y, w, h, color="lightgray"):
+        super().__init__(x, y, w, h)
+        self.default_color = QColor(color)
+        self.selected_color = QColor("orange")
+        self.setBrush(QBrush(self.default_color))
+        self.setFlags(
+            QGraphicsRectItem.GraphicsItemFlag.ItemIsSelectable
+        )
+
+    def paint(self, painter, option, widget=None):
+        if self.isSelected():
+            self.setBrush(QBrush(self.selected_color))
+        else:
+            self.setBrush(QBrush(self.default_color))
+        super().paint(painter, option, widget)
+
+
+class ZoomableGraphicsView(QGraphicsView):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setRenderHints(
+            QPainter.RenderHint.Antialiasing |
+            QPainter.RenderHint.SmoothPixmapTransform
+        )
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
+
+    def wheelEvent(self, event: QWheelEvent):
+        zoomInFactor = 1.15
+        zoomOutFactor = 1 / zoomInFactor
+        if event.modifiers() & Qt.ControlModifier:
+            # Zoom Y axis (vertical) with Ctrl+Wheel
+            zoomFactor = zoomInFactor if event.angleDelta().y() > 0 else zoomOutFactor
+            self.scale(1, zoomFactor)
+        else:
+            # Scroll vertically (pan up/down)
+            scroll_amount = -event.angleDelta().y() / 2  # Adjust divisor for speed
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() + scroll_amount)
+        zoomFactor = zoomInFactor if event.angleDelta().y() > 0 else zoomOutFactor
 
 class AudioFile:
     def __init__(self, name, file_path, channels, sample_rate, bit_depth, length):
@@ -795,16 +835,19 @@ class Ui_MainWindow(object):
         self.Export = QWidget()
         self.Export.setObjectName(u"Export")
 
-        self.ExportFinalTable = QTableWidget(self.Export)
-        self.ExportFinalTable.setObjectName(u"ExportFinalTable")
-        self.ExportFinalTable.setGeometry(QRect(10, 10, 800, 400))  # Adjust size and position as needed
-        self.ExportFinalTable.setColumnCount(9)  # Update column count to 9
-        self.ExportFinalTable.setHorizontalHeaderLabels([
-            "ID", "Slice ID", "Sample Start", "Sample End", "Audio File Path", 
-            "Sample Group Name", "MIDI Note", "Round Robin", "Start Offset"  # Add new column
-        ])
-        self.ExportFinalTable.setEditTriggers(QAbstractItemView.NoEditTriggers)  # Make the table read-only
-        self.ExportFinalTable.setSelectionMode(QAbstractItemView.NoSelection)  # Disable selection
+        self.ExportLayout = QHBoxLayout(self.Export)
+        self.ExportLayout.setObjectName(u"ExportLayout")
+
+        # self.ExportFinalTable = QTableWidget(self.Export)
+        # self.ExportFinalTable.setObjectName(u"ExportFinalTable")
+        # self.ExportFinalTable.setGeometry(QRect(10, 10, 800, 400))  # Adjust size and position as needed
+        # self.ExportFinalTable.setColumnCount(9)  # Update column count to 9
+        # self.ExportFinalTable.setHorizontalHeaderLabels([
+        #     "ID", "Slice ID", "Sample Start", "Sample End", "Audio File Path", 
+        #     "Sample Group Name", "MIDI Note", "Round Robin", "Start Offset"  # Add new column
+        # ])
+        # self.ExportFinalTable.setEditTriggers(QAbstractItemView.NoEditTriggers)  # Make the table read-only
+        # self.ExportFinalTable.setSelectionMode(QAbstractItemView.NoSelection)  # Disable selection
 
          # Export Button
         self.ExportButton = QPushButton(self.Export)
@@ -813,14 +856,29 @@ class Ui_MainWindow(object):
         self.ExportButton.setText("Export")
         self.ExportButton.clicked.connect(self.QuickExport)
 
-        self.ExportStartOffsetBox = QSpinBox(self.Export)
-        self.ExportStartOffsetBox.setObjectName(u"ExportStartOffsetBox")
-        self.ExportStartOffsetBox.setGeometry(QRect(820, 50, 100, 30))  
-        self.ExportStartOffsetBox.setRange(-10000, 10000)  
-        self.ExportStartOffsetBox.setValue(0)  # Default value
-        self.ExportStartOffsetBox.setToolTip("Adjust the sample start offset for all exports.")
+        
+
+        # self.ExportStartOffsetBox = QSpinBox(self.Export)
+        # self.ExportStartOffsetBox.setObjectName(u"ExportStartOffsetBox")
+        # self.ExportStartOffsetBox.setGeometry(QRect(820, 50, 100, 30))  
+        # self.ExportStartOffsetBox.setRange(-10000, 10000)  
+        # self.ExportStartOffsetBox.setValue(0)  # Default value
+        # self.ExportStartOffsetBox.setToolTip("Adjust the sample start offset for all exports.")
+
+        self.ExportView = ZoomableGraphicsView(self.Export)
+        self.ExportView.setObjectName(u"ExportView")
+        self.scene = QGraphicsScene(self.ExportView)
+        self.ExportView.setScene(self.scene)
+        self.ExportView.setGeometry(QRect(10, 10, 800, 400))  # Adjust size and position as needed
+ 
+
+
+        
+        self.ExportLayout.addWidget(self.ExportView)
+        self.ExportLayout.addWidget(self.ExportButton)
 
         self.MainTabs.addTab(self.Export, "")
+        self.MainTabs.currentChanged.connect(self.on_tab_changed)
 
         self.MainTabs.setCurrentIndex(0)
         self.retranslateUi(MainWindow)
@@ -2610,6 +2668,75 @@ class Ui_MainWindow(object):
             print(f"Selected previous slice: {previous_row}")
         else:
             print("Already at the first slice.")
+
+    def on_tab_changed(self, index):
+        if self.MainTabs.widget(index) == self.Export:
+            self.UpdateExport()
+
+    def UpdateExport(self):
+        """
+        Update all UI elements in the export tab.
+        """
+
+        # Clear previous scene items
+        self.scene.clear()
+
+        # Define the range of MIDI notes (e.g., 0-127)
+        midi_min = 0
+        midi_max = 127
+        rect_width = 75
+        rect_height = 40
+        spacing = 5
+
+        # Draw a vertical line of rectangles, one per MIDI note
+        coords = []
+        for i, midi_note in enumerate(range(midi_min, midi_max + 1)):
+            y = i * (rect_height + spacing)
+            # Determine color: light gray for naturals, dark gray for accidentals
+            note_name = MidiNoteToName(midi_note)
+            if "#" in note_name:
+                color = QColor(60, 60, 60)  # Dark gray for accidentals
+            else:
+                color = QColor(200, 200, 200)  # Light gray for naturals
+            rect_item = self.scene.addRect(0, y, rect_width, rect_height, brush=QBrush(color))
+            rect = self.scene.addRect(0, y, rect_width, rect_height)
+            # Optionally, add a label with the note name
+            note_name = MidiNoteToName(midi_note)
+            coords.append((midi_note,0,y, rect_width, rect_height))
+            self.scene.addText(note_name).setPos(5, y)
+
+        # Adjust scene size
+        self.scene.setSceneRect(0, 0, rect_width + 80, (midi_max - midi_min + 1) * (rect_height + spacing))
+        n = 0
+        workslices = self.SLICES
+        for meep in coords:
+            midi_note, x_offset, y_offset, rect_width, rect_height = meep
+            note_slices = []
+            for slice in workslices:
+                if hasattr(slice, "note") and slice.note == midi_note:
+                    note_slices.append(slice)
+                    workslices.remove(slice)
+
+            if note_slices:
+                for i, slice in enumerate(note_slices):
+                    slice_width = 120
+                    slice_height = rect_height/len(note_slices)
+
+                    slice_color = QColor(100, 150, 255)
+                    n += 1
+                    if n % 2 == 0:
+                        slice_color = QColor(150, 200, 255)
+                    slice_offset = y_offset + i * slice_height
+
+                    slice_rect_item = self.scene.addRect(
+                        rect_width + 10, slice_offset,
+                        slice_width, slice_height,
+                        brush=QBrush(slice_color)
+                    )
+                    
+
+        # Placeholder for export tab update logic.
+        print("Export tab updated.")
 
     def UpdateSelectedSGroup(self):
         '''
