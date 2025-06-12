@@ -1,7 +1,7 @@
 from ast import Import
 from email.mime import audio
 import pickle
-from re import U
+from re import S, U
 import sys
 import os
 import select
@@ -30,6 +30,7 @@ import contextlib
 import qdarktheme
 from memory_profiler import profile
 import wave
+from collections import Counter
 
 from settings import Ui_SettingsWindow
 
@@ -39,9 +40,14 @@ NOTE_NAMES = [
     'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'
 ]
 
-
 class InteractiveRect(QGraphicsRectItem):
-    def __init__(self, x, y, w, h, color="lightgray"):
+    def __init__(self, x, y, w, h, 
+                 color="lightgray", 
+                 main_tabs=None, 
+                 Slice=None, 
+                 Sgroup=None,
+                 MainWindow=None
+                 ):
         super().__init__(x, y, w, h)
         self.default_color = QColor(color)
         self.selected_color = QColor("orange")
@@ -49,6 +55,10 @@ class InteractiveRect(QGraphicsRectItem):
         self.setFlags(
             QGraphicsRectItem.GraphicsItemFlag.ItemIsSelectable
         )
+        self.MainTabs = main_tabs  # Store reference to MainTabs
+        self.Slice = Slice
+        self.Sgroup = Sgroup  # Store reference to Sgroup
+        self.MainWindow = MainWindow  # Store reference to MainWindow
 
     def paint(self, painter, option, widget=None):
         if self.isSelected():
@@ -57,6 +67,40 @@ class InteractiveRect(QGraphicsRectItem):
             self.setBrush(QBrush(self.default_color))
         super().paint(painter, option, widget)
 
+    def mousePressEvent(self, event):
+        if event.modifiers() & Qt.AltModifier and self.MainTabs is not None:
+            SliceUID = self.Slice.UID if self.Slice else None
+            self.MainTabs.setCurrentIndex(2)  # Switch to Sort tab
+            # Call update
+            self.MainWindow.UpdateSortTab()
+            if SliceUID is not None:
+                # Select sgroup in Sort Tab
+                if self.Sgroup is not None:
+                    # Find the index of the Sgroup in the SortTabSGroupfilter
+                    index = self.MainWindow.SortTabSGroupfilter.findText(self.Sgroup.name)
+                    if index != -1:
+                        self.MainWindow.SortTabSGroupfilter.setCurrentIndex(index)
+                        # Update the slice list based on the selected Sgroup
+
+                # Find the slice with the matching UID and select it
+                for i in range(self.MainWindow.SortTabSliceList.rowCount()):
+                    item = self.MainWindow.SortTabSliceList.item(i, 0)
+                    if item and item.text() == str(SliceUID):
+                        self.MainWindow.SortTabSliceList.selectRow(i)
+                        break
+
+        if event.button() == Qt.MiddleButton:
+            # get slice audio
+            print("Playing slice audio")
+            audio_obj = self.Slice.sample_groups[0].audio_files[0] if self.Slice and self.Slice.sample_groups else None 
+            if audio_obj:
+                audio_data = self.MainWindow.GetAudioData(audio_obj, start=self.Slice.start, end=self.Slice.end)
+                if audio_data is not None:
+                    audio_data = audio_data[0][1]
+
+                self.MainWindow.PlayAudio(audio_data)
+
+        # super().mousePressEvent(event)
 
 class ZoomableGraphicsView(QGraphicsView):
     def __init__(self, *args, **kwargs):
@@ -176,6 +220,8 @@ class Ui_MainWindow(object):
         self.SortCurrentAudioData = None
         self.SortTabWaveformYScaling = 1
 
+        self.PlaybackAudio = None
+
     def closeEvent(self, event):
         if not self.Saved:
             self.NotSavedPrompt("a")
@@ -191,6 +237,7 @@ class Ui_MainWindow(object):
             MainWindow.setObjectName(u"MainWindow")
         MainWindow.resize(1227, 604)
         
+        maintabs = QTabWidget(MainWindow)
 
         self.LoadWindowSize()
 
@@ -1458,12 +1505,12 @@ class Ui_MainWindow(object):
 
         return out
 
-    def SliceAudioAnalysis(self, slice):
+    def SliceAudioAnalysis(self, slice, force=False):
         """
         Analyze the audio slices for a given audio file.
         """
 
-        if slice.analyzed:
+        if slice.analyzed and not force:
             print(f"Slice has already been analyzed.")
             return
 
@@ -1488,38 +1535,70 @@ class Ui_MainWindow(object):
             print(f"Invalid slice range: start={start}, end={end}.")
             return
 
-        audio_nrg = []
-        for audio_file in audio_files:
-            #Get audio data for the slice
-            audio_data = self.GetAudioData(audio_file, start, end)[0][1]
-            if audio_data is None:
-                print(f"Failed to retrieve audio data for slice from file '{audio_file.name}'.")
-                continue
-            #sum absolute values of audio data
-            nrg = np.sum(np.abs(audio_data))
-            audio_nrg.append([audio_file,nrg])
+        # audio_nrg = []                  outdated
+        # for audio_file in audio_files:
+        #     #Get audio data for the slice
+        #     audio_data = self.GetAudioData(audio_file, start, end)[0][1]
+        #     if audio_data is None:
+        #         print(f"Failed to retrieve audio data for slice from file '{audio_file.name}'.")
+        #         continue
+        #     #sum absolute values of audio data
+        #     nrg = np.sum(np.abs(audio_data))
+        #     audio_nrg.append([audio_file,nrg])
 
-        print(audio_nrg)
 
-        #Get the audio file with the highest energy
-        if not audio_nrg:
-            print(f"No audio data found for slice.")
-            return
-        audio_nrg.sort(key=lambda x: x[1], reverse=True)
-        selected_audio = audio_nrg[0][0]
+
+        # #Get the audio file with the highest energy
+        # if not audio_nrg:
+        #     print(f"No audio data found for slice.")
+        #     return
+        # audio_nrg.sort(key=lambda x: x[1], reverse=True)
+        # selected_audio = audio_nrg[0][0]
 
         #Get note
-        selected_audio_data = self.GetAudioData(selected_audio, start, end)
-        if selected_audio_data is None:
-            print(f"Failed to retrieve audio data for selected audio '{selected_audio.name}' in slice.")
-            return
 
-        _, note = PitchDetection(selected_audio_data, selected_audio.sample_rate)
-        if note is None:
-            print(f"Failed to detect pitch for slice in audio file '{selected_audio.name}'.")
+
+
+        # selected_audio_data = self.GetAudioData(selected_audio, start, end)
+        # if selected_audio_data is None:
+        #     print(f"Failed to retrieve audio data for selected audio '{selected_audio.name}' in slice.")
+        #     return
+
+        # _, note = PitchDetection(selected_audio_data, selected_audio.sample_rate)
+        # if note is None:
+        #     print(f"Failed to detect pitch for slice in audio file '{selected_audio.name}'.")
+        #     return
+
+        Detected = []
+        for audio in audio_files:
+            audio_data = self.GetAudioData(audio, start, end)
+            if audio_data is None:
+                print(f"Failed to retrieve audio data for slice from file '{audio.name}'.")
+                continue
+
+            acc, note = PitchDetection(audio_data, audio.sample_rate)
+            if note is None:
+                print(f"Failed to detect pitch for slice in audio file '{audio.name}'.")
+                continue
+
+            Detected.append((audio, note, acc))
+
+        if not Detected:
+            print(f"No valid audio data found for pitch detection in slice.")
             return
-        print(f"Detected note '{note}' for slice in audio file '{selected_audio.name}'.")
-        slice.note = note
+        
+        # Sort by pitch accuracy
+        Detected.sort(key=lambda x: x[2], reverse=True)
+
+        # Use Most common
+        if len(Detected) > 1:
+            notes = [det[1] for det in Detected]
+            note_counts = Counter(notes)
+            most_common_note, _ = note_counts.most_common(1)[0]
+            Detected = [(Detected[0][0], most_common_note, Detected[0][2])]
+
+        print(f"Detected note '{Detected[0][1]}' for slice in audio file '{Detected[0][0].name}'.")
+        slice.note = Detected[0][1]
         slice.analyzed = True
 
 
@@ -2708,7 +2787,15 @@ class Ui_MainWindow(object):
         # Adjust scene size
         self.scene.setSceneRect(0, 0, rect_width + 80, (midi_max - midi_min + 1) * (rect_height + spacing))
         n = 0
-        workslices = self.SLICES
+        workslices = list(self.SLICES)
+        # print(f"WORKING SLICES: {workslices}")
+
+        sgroupoffsets = []
+        for i, group in enumerate(self.SGROUPS):
+            sgroupoffsets.append((group.name, i*rect_width))
+
+        # print(f"SGROUP OFFSETS: {sgroupoffsets}")
+
         for meep in coords:
             midi_note, x_offset, y_offset, rect_width, rect_height = meep
             note_slices = []
@@ -2716,27 +2803,65 @@ class Ui_MainWindow(object):
                 if hasattr(slice, "note") and slice.note == midi_note:
                     note_slices.append(slice)
                     workslices.remove(slice)
-
+            
+            sgroup_separated = []
             if note_slices:
                 for i, slice in enumerate(note_slices):
-                    slice_width = 120
-                    slice_height = rect_height/len(note_slices)
-
+                    for sgroup in slice.sample_groups:
+                        sgroup_offset = next((offset for name, offset in sgroupoffsets if name == sgroup.name), 0)
+                        # print(f"SGROUP: {sgroup.name}, Offset: {sgroup_offset}")
+                        sgroup_separated.append((slice, sgroup_offset + x_offset, sgroup))
+            
+            if sgroup_separated:
+                for i, tuple in enumerate(sgroup_separated):
+                    slice = tuple[0]
+                    sgroup_offset = tuple[1]
+                    sgroup = tuple[2]
                     slice_color = QColor(100, 150, 255)
+                    slice_height = rect_height / len(note_slices)
                     n += 1
                     if n % 2 == 0:
                         slice_color = QColor(150, 200, 255)
-                    slice_offset = y_offset + i * slice_height
-
-                    slice_rect_item = self.scene.addRect(
-                        rect_width + 10, slice_offset,
-                        slice_width, slice_height,
-                        brush=QBrush(slice_color)
+                    # slice_rect_item = self.scene.addRect(
+                    #     rect_width + sgroup_offset, y_offset + i * slice_height,
+                    #     rect_width , slice_height,
+                    #     brush=QBrush(slice_color)
+                    # )
+                    rect = InteractiveRect(
+                        rect_width + sgroup_offset, 
+                        y_offset + i * slice_height,
+                        rect_width, 
+                        slice_height,
+                        slice_color,
+                        main_tabs=self.MainTabs,  # Pass the reference here
+                        Slice=slice,
+                        Sgroup=sgroup,
+                        MainWindow=self
                     )
+                    self.scene.addItem(rect)
+
+
+            # if note_slices:
+            #     for i, slice in enumerate(note_slices):
+            #         slice_width = 120
+            #         slice_height = rect_height/len(note_slices)
+
+            #         slice_color = QColor(100, 150, 255)
+            #         n += 1
+            #         if n % 2 == 0:
+            #             slice_color = QColor(150, 200, 255)
+            #         slice_offset = y_offset + i * slice_height
+
+            #         slice_rect_item = self.scene.addRect(
+            #             rect_width + 10, slice_offset,
+            #             slice_width, slice_height,
+            #             brush=QBrush(slice_color)
+            #         )
                     
 
         # Placeholder for export tab update logic.
         print("Export tab updated.")
+        print(len(self.SLICES), " slices available for export.")
 
     def UpdateSelectedSGroup(self):
         '''
@@ -2858,7 +2983,7 @@ class Ui_MainWindow(object):
             print("No slices to analyze.")
             return
         for slice in self.SLICES:
-            self.SliceAudioAnalysis(slice)
+            self.SliceAudioAnalysis(slice, force=True)
         print("All slices analyzed.")
         self.UpdateSortTab()
 
@@ -2937,6 +3062,96 @@ class Ui_MainWindow(object):
         #     print(f"Slice '{slice.UID}' exported successfully to {export_dir}.")
         # except Exception as e:
         #     print(f"Error exporting slice '{slice.UID}': {e}")
+
+    def PlayAudio(self, audio_data, sr=44100):
+        """
+        Play audio data using the selected audio device.
+        
+        Args:
+            audio_data (np.array): Audio samples to play.
+        """
+        if self.PlaybackAudio and self.PlaybackAudio.is_active():
+            print("Playback already in progress, stopping current playback.")
+            self.PlaybackAudio.close()
+            self.PlaybackAudio = None
+
+
+        if not isinstance(audio_data, np.ndarray):
+            raise ValueError("Audio data must be a numpy array.")
+        
+        current_audio_devices = []
+        p = pyaudio.PyAudio()
+        devices = []
+        for i in range(p.get_device_count()):
+            current_audio_devices.append(p.get_device_info_by_index(i)['name'])
+                                                #                                                FIX SHIT HERE 
+
+        if self.AudioDevice not in current_audio_devices:
+            print(f"Audio device not found: {self.AudioDevice}, using default device.")
+
+        audio_device = self.AudioDevice if self.AudioDevice in current_audio_devices else "Default"
+
+        #get device id
+        device_id = None
+        for i in range(p.get_device_count()):
+            device_info = p.get_device_info_by_index(i)
+            if device_info['name'] == audio_device:
+                device_id = i
+                break
+
+
+        # get device SR
+        device_sample_rate = p.get_device_info_by_index(device_id)['defaultSampleRate'] if device_id is not None else 44100
+
+        if not device_sample_rate == sr:
+            print(f"Device sample rate {device_sample_rate} does not match audio sample rate {sr}. Resampling...")
+            audio_data = FastResample(audio_data, sr, device_sample_rate)
+            sr = device_sample_rate
+
+        # Normalize audio data to -1.0 to 1.0 range      add a setting ot turn that off!!!!
+        audio_data = audio_data / np.max(np.abs(audio_data)) if np.max(np.abs(audio_data)) != 0 else audio_data
+
+        # Determine number of channels
+        if audio_data.ndim == 1:
+            num_channels = 1
+        elif audio_data.ndim == 2:
+            num_channels = audio_data.shape[1]
+        else:
+            num_channels = 1  # fallback
+        print(f"Playing audio on device '{audio_device}' with sample rate {sr} and {num_channels} channel(s).")
+        device_output_channels = p.get_device_info_by_index(device_id)['maxOutputChannels'] if device_id is not None else None
+        print(f"Device output channels: {device_output_channels}")
+        # Open stream (2)
+        self.PlaybackAudio = p.open(
+                    format=pyaudio.paInt16,
+                    rate=int(sr),
+                    output=True,
+                    output_device_index=device_id,
+                    channels=num_channels
+                       )
+
+        chunk = 1024  # Number of frames per buffer
+
+        has_exit = False
+
+        # Write data to the stream (3)
+        audio_data_int16 = (audio_data * 32767).astype(np.int16)
+        audio_bytes = audio_data_int16.tobytes()
+        for i in range(0, len(audio_bytes), chunk * 2):  # 2 bytes per int16 sample
+            if not self.PlaybackAudio:
+                print("Playback stopped.")
+                has_exit = True
+                break
+            self.PlaybackAudio.write(audio_bytes[i:i + chunk * 2])
+            QCoreApplication.processEvents()
+
+        if not has_exit:
+            # Close stream (4)
+            self.PlaybackAudio.close()
+
+        # Release PortAudio system resources (5)
+        p.terminate()
+
 
 def GetWavInfo(file_path: str) -> tuple[int, int, int, int]:
     """
